@@ -873,7 +873,9 @@ BOOL IWineD3DImpl_FillGLCaps(WineD3D_GL_Info *gl_info) {
             gl_info->max_anisotropy = gl_max;
             TRACE_(d3d_caps)("Max anisotropy: %d\n", gl_info->max_anisotropy);
         }
-        if (gl_info->supported[ARB_FRAGMENT_PROGRAM]) {
+	if (gl_info->supported[ARB_FRAGMENT_PROGRAM] && !GL_EXTCALL(glGetProgramivARB))
+		gl_info->supported[ARB_FRAGMENT_PROGRAM] = 0;
+	else if (gl_info->supported[ARB_FRAGMENT_PROGRAM]) {
             gl_info->ps_arb_version = PS_VERSION_11;
             GL_EXTCALL(glGetProgramivARB(GL_FRAGMENT_PROGRAM_ARB, GL_MAX_PROGRAM_ENV_PARAMETERS_ARB, &gl_max));
             gl_info->ps_arb_constantsF = gl_max;
@@ -885,7 +887,9 @@ BOOL IWineD3DImpl_FillGLCaps(WineD3D_GL_Info *gl_info) {
             gl_info->ps_arb_max_instructions = gl_max;
             TRACE_(d3d_caps)("Max ARB_FRAGMENT_PROGRAM native instructions: %d\n", gl_info->ps_arb_max_instructions);
         }
-        if (gl_info->supported[ARB_VERTEX_PROGRAM]) {
+	if (gl_info->supported[ARB_VERTEX_PROGRAM] && !GL_EXTCALL(glGetProgramivARB))
+		gl_info->supported[ARB_VERTEX_PROGRAM] = 0;
+	else if (gl_info->supported[ARB_VERTEX_PROGRAM]) {
             gl_info->vs_arb_version = VS_VERSION_11;
             GL_EXTCALL(glGetProgramivARB(GL_VERTEX_PROGRAM_ARB, GL_MAX_PROGRAM_ENV_PARAMETERS_ARB, &gl_max));
             gl_info->vs_arb_constantsF = gl_max;
