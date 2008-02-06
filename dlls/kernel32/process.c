@@ -834,6 +834,8 @@ static void start_process( void *arg )
             DPRINTF( "%04x:Starting process %s (entryproc=%p)\n", GetCurrentThreadId(),
                      debugstr_w(peb->ProcessParameters->ImagePathName.Buffer), entry );
 
+	/* HACK: preload fake application compatibility dll into process to trick Securom 7.x */
+	LoadLibraryA( "aclayers.dll");
         SetLastError( 0 );  /* clear error code */
         if (peb->BeingDebugged) DbgBreakPoint();
         ExitThread( entry( peb ) );
