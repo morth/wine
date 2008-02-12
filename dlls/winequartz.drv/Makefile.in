@@ -4,40 +4,10 @@ SRCDIR    = @srcdir@
 VPATH     = @srcdir@
 MODULE    = winequartz.drv
 IMPORTS   = user32 gdi32 advapi32 kernel32 ntdll
-EXTRAINCL = 
-EXTRALIBS = $(LIBUNICODE) -framework Cocoa -framework ApplicationServices
-EXTRA_OBJS = quartzdrv_cocoa.o WineView.o WineWindow.o WineDesktop.o 
-MODCFLAGS = -DWINE_COCOA
 
 C_SRCS = \
-	bitblt.c \
-	bitmap.c \
-	brush.c \
-	clipping.c \
-	dce.c \
-	desktop.c \
-	dib.c \
-	dib_convert.c \
-	dib_dst_swap.c \
-	dib_src_swap.c \
-	displays.c \
-	event.c \
-	font.c \
-	graphics.c \
-	init.c \
-	keyboard.c \
-	mouse.c \
-	palette.c \
-	pen.c \
-	quartzdrv_coregraphics.c \
-	quartzdrv_main.c \
-	settings.c \
-	text.c \
-	window.c \
-	winpos.c
+	quartzdrv_main.c
 
 @MAKE_DLL_RULES@
 
-all: $(PROGRAMS)
-
-### Dependencies:
+@DEPENDENCIES@  # everything below this line is overwritten by make depend
