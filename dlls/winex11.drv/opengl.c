@@ -345,6 +345,7 @@ static BOOL X11DRV_WineGL_InitOpenglInfo(void)
     TRACE("Server GLX vendor:     : %s.\n", WineGLInfo.glxServerVendor);
     TRACE("Client GLX version     : %s.\n", WineGLInfo.glxClientVersion);
     TRACE("Client GLX vendor:     : %s.\n", WineGLInfo.glxClientVendor);
+    TRACE("Usable GLX extensions  : %s.\n", WineGLInfo.glxExtensions);
     TRACE("Direct rendering enabled: %s\n", WineGLInfo.glxDirect ? "True" : "False");
 
     if(vis) XFree(vis);
