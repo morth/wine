@@ -90,7 +90,7 @@ static HRESULT WINAPI OleInPlaceActiveObject_ContextSensitiveHelp(IOleInPlaceAct
 static HRESULT WINAPI OleInPlaceActiveObject_TranslateAccelerator(IOleInPlaceActiveObject *iface, LPMSG lpmsg)
 {
     HTMLDocument *This = impl_from_IOleInPlaceActiveObject(iface);
-    FIXME("(%p)->(%p)\n", This, lpmsg);
+    TRACE("(%p)->(%p)\n", This, lpmsg);
     return E_NOTIMPL;
 }
 
