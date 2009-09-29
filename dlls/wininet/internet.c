@@ -2772,8 +2772,11 @@ BOOL WINAPI InternetSetOptionW(HINTERNET hInternet, DWORD dwOption,
       }
       break;
     case INTERNET_OPTION_RESET_URLCACHE_SESSION:
-        FIXME("Option INTERNET_OPTION_RESET_URLCACHE_SESSION: STUB\n");
-        break;
+      {
+	URLCacheContainers_DeleteAll();
+        URLCacheContainers_CreateDefaults();
+      }
+      break;
     case INTERNET_OPTION_END_BROWSER_SESSION:
         FIXME("Option INTERNET_OPTION_END_BROWSER_SESSION: STUB\n");
         break;
