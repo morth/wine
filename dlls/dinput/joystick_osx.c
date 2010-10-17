@@ -584,7 +584,7 @@ static void get_osx_device_elements_props(JoystickImpl *device)
             IOHIDElementRef tIOHIDElementRef = ( IOHIDElementRef ) CFArrayGetValueAtIndex( gElementCFArrayRef, idx );
 
             device->generic.props[idx].lDevMin = IOHIDElementGetLogicalMin(tIOHIDElementRef);
-            device->generic.props[idx].lDevMax = IOHIDElementGetLogicalMax(tIOHIDElementRef);
+            device->generic.props[idx].lDevMax = idx == 0 ? 100 : IOHIDElementGetLogicalMax(tIOHIDElementRef);
             device->generic.props[idx].lMin =  0;
             device->generic.props[idx].lMax =  0xffff;
             device->generic.props[idx].lDeadZone = 0;
