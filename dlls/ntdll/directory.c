@@ -2127,6 +2127,7 @@ static NTSTATUS find_file_in_dir( char *unix_name, int pos, const WCHAR *name, i
             if (is_win_dir) *is_win_dir = is_same_file( &windir, &st );
             return STATUS_SUCCESS;
         }
+	goto not_found;
     }
     if (check_case) goto not_found;  /* we want an exact match */
 
