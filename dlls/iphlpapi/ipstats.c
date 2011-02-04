@@ -123,6 +123,7 @@
 #ifdef HAVE_SYS_TIHDR_H
 #include <sys/tihdr.h>
 #endif
+#include <spawn.h>
 
 #ifndef ROUNDUP
 #define ROUNDUP(a) \
@@ -2136,8 +2137,61 @@ DWORD build_tcp_table( TCP_TABLE_CLASS class, void **tablep, BOOL order, HANDLE 
         HeapFree (GetProcessHeap (), 0, Buf);
     }
 #else
-    FIXME( "not implemented\n" );
-    ret = ERROR_NOT_SUPPORTED;
+    {
+        int iofd[2];
+        pid_t nspid;
+
+        if (pipe(iofd) == 0)
+        {
+            FILE *nsin = fdopen(iofd[0], "r");
+            char buf[1024];
+
+            posix_spawn_file_actions_t actions;
+
+            posix_spawn_file_actions_init(&actions);
+            posix_spawn_file_actions_adddup2(&actions, iofd[1], STDOUT_FILENO);
+            if (posix_spawnp(&nspid, "netstat", &actions, NULL, (char**)(const char*[]){ "netstat", "-n", "-p", "udp", "-f", "inet", NULL }, NULL) == 0)
+            {
+                close (iofd[1]);
+
+                while (fgets(buf, sizeof(buf), nsin))
+                {
+                    int recvq, sendq;
+                    char proto[1024], local[1024], remote[1024];
+
+                    if (sscanf(buf, "%s %d %d %s %s", proto, &recvq, &sendq, local, remote) == 5) {
+                        char *p = strrchr(local, '.');
+
+                        if (p)
+                            *p++ = '\0';
+
+                        row.dwLocalAddr = 0;
+                        if (strcmp(local, "*") != 0)
+                            inet_pton(AF_INET, local, &row.dwLocalAddr);
+                        row.dwLocalPort = 0;
+                        if (p && strcmp(p, "*") != 0)
+                            row.dwLocalPort = htons(atoi(p));
+                        if (!(table = append_udp_row( heap, flags, table, &count, &row )))
+                            break;
+                        FIXME ("Appending %x %x\n", row.dwLocalAddr, row.dwLocalPort);
+                    }
+                    else
+                        FIXME ("Failed to scan %s\n", buf);
+                }
+                while (waitpid(nspid, NULL, 0) == -1 && errno != ECHILD)
+                    ;
+                FIXME ("Reaped netstat\n");
+            }
+            else
+            {
+                FIXME ("Failed to spawn netstat\n");
+                close (iofd[1]);
+            }
+            fclose(nsin);
+        }
+    }
+    //FIXME( "not implemented\n" );
+    //ret = ERROR_NOT_SUPPORTED;
 #endif
 
     if (!table) return ERROR_OUTOFMEMORY;
