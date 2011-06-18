@@ -84,7 +84,7 @@ struct wined3d_settings wined3d_settings =
     PCI_DEVICE_NONE,/* PCI Device ID */
     0,              /* The default of memory is set in init_driver_info */
     NULL,           /* No wine logo by default */
-    FALSE,          /* Disable multisampling for now due to Nvidia driver bugs which happens for some users */
+    TRUE,           /* Multisampling */
     FALSE,          /* No strict draw ordering. */
 };
 
