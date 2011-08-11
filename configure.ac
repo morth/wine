@@ -448,6 +448,7 @@ AC_CHECK_HEADERS(\
 	scsi/scsi.h \
 	scsi/scsi_ioctl.h \
 	scsi/sg.h \
+	spawn.h \
 	stdbool.h \
 	stdint.h \
 	strings.h \
@@ -1938,6 +1939,7 @@ AC_CHECK_FUNCS(\
 	poll \
 	popen \
 	port_create \
+	posix_spawnp \
 	prctl \
 	pread \
 	pwrite \

@@ -76,6 +76,10 @@
 #ifdef HAVE_FNMATCH_H
 #include <fnmatch.h>
 #endif
+#ifdef HAVE_SPAWN_H
+#include <spawn.h>
+#endif
+#include <signal.h>
 
 #define COBJMACROS
 #define NONAMELESSUNION
@@ -188,15 +192,24 @@ struct rb_string_entry
     struct wine_rb_entry entry;
 };
 
+enum winemenubuilder_file_type
+{
+    WINEMENUBUILDER_DESKTOP,
+    WINEMENUBUILDER_OSAAPPLET
+};
+
 DEFINE_GUID(CLSID_WICIcnsEncoder, 0x312fb6f1,0xb767,0x409d,0x8a,0x6d,0x0f,0xc1,0x54,0xd4,0xf0,0x5c);
 
 static char *xdg_config_dir;
 static char *xdg_data_dir;
 static char *xdg_desktop_dir;
 
+static enum winemenubuilder_file_type winemenubuilder_file_type;
+
 static WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
 
+#ifndef __APPLE__
 /* Utility routines */
 static unsigned short crc16(const char* string)
 {
@@ -216,6 +229,7 @@ static unsigned short crc16(const char* string)
     }
     return crc;
 }
+#endif
 
 static char *strdupA( const char *str )
 {
@@ -1421,6 +1435,157 @@ static BOOL write_desktop_entry(const char *unix_link, const char *location, con
     }
 
     return TRUE;
+}
+
+static BOOL write_desktop_applet(const char *unix_link, const char *location, const char *linkname,
+                                const char *path, const char *args, const char *descr,
+                                const char *workdir, const char *icon)
+{
+#ifdef HAVE_POSIX_SPAWNP
+    FILE *file;
+    int iofd[2];
+    pid_t pid;
+    int status;
+    posix_spawn_file_actions_t actions;
+    struct sigaction dfl_act, old_act;
+    const char *libpath;
+
+    WINE_TRACE("(%s,%s,%s,%s,%s,%s,%s,%s)\n", wine_dbgstr_a(unix_link), wine_dbgstr_a(location),
+               wine_dbgstr_a(linkname), wine_dbgstr_a(path), wine_dbgstr_a(args),
+               wine_dbgstr_a(descr), wine_dbgstr_a(workdir), wine_dbgstr_a(icon));
+
+    if (pipe(iofd) < 0)
+        return FALSE;
+
+    file = fdopen(iofd[1], "w");
+    if (file == NULL) {
+        close(iofd[0]);
+        close(iofd[1]);
+        return FALSE;
+    }
+
+    dfl_act.sa_handler = SIG_DFL;
+    dfl_act.sa_flags = 0;
+    sigemptyset( &dfl_act.sa_mask );
+    sigaction( SIGCHLD, &dfl_act, &old_act );
+
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, iofd[0], STDIN_FILENO);
+    posix_spawn_file_actions_addclose(&actions, iofd[1]);
+    if (posix_spawnp(&pid, "osacompile", &actions, NULL, (char**)(const char*[]){ "osacompile", "-o", location, NULL }, NULL) != 0)
+    {
+        WINE_ERR("Failed to spawn osacompile: %s", strerror(errno));
+        close(iofd[0]);
+        fclose(file);
+        return FALSE;
+    }
+
+    close(iofd[0]);
+
+    libpath = getenv("DYLD_FALLBACK_LIBRARY_PATH");
+    if (descr && lstrlenA(descr))
+        fprintf(file, "(* %s *)\n", descr);
+    fprintf(file, "set prefix to quoted form of \"%s\"\n", wine_get_config_dir());
+    fprintf(file, "set binpath to quoted form of \"%s\"\n", getenv("PATH"));
+    if (libpath)
+    	fprintf(file, "set libpath to quoted form of \"%s\"\n", libpath);
+    fprintf(file, "set progpath to quoted form of \"%s\"\n", path);
+    fprintf(file, "set args to \"%s\"\n", args);
+    if (workdir)
+    {
+        fprintf(file, "set workdir to quoted form of \"%s\"\n", workdir);
+        fprintf(file, "do shell script \"cd \" & workdir & \" && ");
+    }
+    else
+        fprintf(file, "do shell script \"");
+    fprintf(file, "env PATH=\" & binpath & \"");
+    if (libpath)
+        fprintf(file, " DYLD_FALLBACK_LIBRARY_PATH=\" & libpath & \"");
+    fprintf(file, " WINEPREFIX=\" & prefix & \" wine \" & progpath & \" \" & args & \" > /dev/null\"\n");
+    fclose(file);
+
+    status = -1;
+    while (waitpid(pid, &status, 0) == -1 && errno != ECHILD)
+        ;
+
+    sigaction( SIGCHLD, &old_act, NULL );
+
+    if (!WIFEXITED(status))
+    {
+        if (WIFSIGNALED(status))
+            WINE_ERR("osacompile crashed signal %d\n", WTERMSIG(status));
+        else
+            WINE_ERR("osacompile crashed %d\n", status);
+        return FALSE;
+    }
+    if (WEXITSTATUS(status))
+    {
+        WINE_ERR("osacompile failed with exit code %d\n", WEXITSTATUS(status));
+        return FALSE;
+    }
+
+    if (icon && lstrlenA(icon)) {
+        char *iconLocation = heap_printf("%s/Contents/Resources/applet.icns", location);
+        if (iconLocation)
+        {
+            const char *argv[4];
+
+            argv[0] = "cp";
+            argv[1] = icon;
+            argv[2] = iconLocation;
+            argv[3] = NULL;
+
+            spawnvp( _P_NOWAIT, argv[0], argv );
+
+            HeapFree(GetProcessHeap(), 0, iconLocation);
+        }
+    }
+
+    if (unix_link)
+    {
+        DWORD ret = register_menus_entry(location, unix_link);
+        if (ret != ERROR_SUCCESS)
+            return FALSE;
+    }
+
+    return TRUE;
+#else
+    return FALSE;
+#endif
+}
+
+static BOOL write_desktop_file(const char *unix_link, const char *location, const char *linkname,
+                                const char *path, const char *args, const char *descr,
+                                const char *workdir, const char *icon)
+{
+    BOOL r = FALSE;
+    char *fileLocation;
+
+    WINE_TRACE("(%s,%s,%s,%s,%s,%s,%s,%s)\n", wine_dbgstr_a(unix_link), wine_dbgstr_a(location),
+               wine_dbgstr_a(linkname), wine_dbgstr_a(path), wine_dbgstr_a(args),
+               wine_dbgstr_a(descr), wine_dbgstr_a(workdir), wine_dbgstr_a(icon));
+
+    if (winemenubuilder_file_type == WINEMENUBUILDER_DESKTOP)
+    {
+        fileLocation = heap_printf("%s.desktop", location);
+        if (fileLocation)
+        {
+            r = write_desktop_entry(unix_link, fileLocation, linkname, path, args, descr, workdir, icon);
+            if (r)
+                chmod(fileLocation, 0755);
+        }
+    }
+    else
+    {
+        fileLocation = heap_printf("%s.app", location);
+        if (fileLocation)
+            r = write_desktop_applet(unix_link, fileLocation, linkname, path, args, descr, workdir, icon);
+    }
+
+    if (fileLocation)
+        HeapFree(GetProcessHeap(), 0, fileLocation);
+
+    return r;
 }
 
 static BOOL write_directory_entry(const char *directory, const char *location)
@@ -2898,7 +3063,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             lastEntry = link_name;
         else
             ++lastEntry;
-        location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
+        location = heap_printf("%s/%s", xdg_desktop_dir, lastEntry);
         if (location)
         {
             if (csidl == CSIDL_COMMON_DESKTOPDIRECTORY)
@@ -2906,15 +3071,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
                 char *link_arg = escape_unix_link_arg(unix_link);
                 if (link_arg)
                 {
-                    r = !write_desktop_entry(unix_link, location, lastEntry,
+                    r = !write_desktop_file(unix_link, location, lastEntry,
                         start_path, link_arg, description, work_dir, icon_name);
                     HeapFree(GetProcessHeap(), 0, link_arg);
                 }
             }
             else
-                r = !write_desktop_entry(NULL, location, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
-            if (r == 0)
-                chmod(location, 0755);
+                r = !write_desktop_file(NULL, location, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
             HeapFree(GetProcessHeap(), 0, location);
         }
     }
@@ -3068,12 +3231,10 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
             lastEntry = link_name;
         else
             ++lastEntry;
-        location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
+        location = heap_printf("%s/%s", xdg_desktop_dir, lastEntry);
         if (location)
         {
-            r = !write_desktop_entry(NULL, location, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
-            if (r == 0)
-                chmod(location, 0755);
+            r = !write_desktop_file(NULL, location, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
             HeapFree(GetProcessHeap(), 0, location);
         }
     }
@@ -3569,6 +3730,33 @@ static BOOL init_xdg(void)
     return FALSE;
 }
 
+static BOOL init_winemenubuilder_file_type(void)
+{
+    char *envFileType = getenv("WINEMENUBUILDER_FILE_TYPE");
+
+    if (envFileType)
+    {
+        if (strcmp(envFileType, "osaapplet") == 0)
+        {
+            winemenubuilder_file_type = WINEMENUBUILDER_OSAAPPLET;
+            return TRUE;
+        }
+        if (strcmp(envFileType, "desktop") == 0)
+        {
+            winemenubuilder_file_type = WINEMENUBUILDER_DESKTOP;
+            return TRUE;
+        }
+        WINE_WARN("Unknown WINEMENUBUIDER_FILE_TYPE \"%s\"", envFileType);
+    }
+
+#ifdef __APPLE__
+    winemenubuilder_file_type = WINEMENUBUILDER_OSAAPPLET;
+#else
+    winemenubuilder_file_type = WINEMENUBUILDER_DESKTOP;
+#endif
+    return TRUE;
+}
+
 /***********************************************************************
  *
  *           wWinMain
@@ -3588,6 +3776,9 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
     int ret = 0;
 
     if (!init_xdg())
+        return 1;
+
+    if (!init_winemenubuilder_file_type())
         return 1;
 
     hr = CoInitialize(NULL);
