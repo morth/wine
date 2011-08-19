@@ -264,6 +264,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 {
     FILE *file;
     char *bundle_and_script;
+    const char *libpath;
 
     bundle_and_script = heap_printf("%s/%s", path_to_bundle_macos, linkname);
 
@@ -276,13 +277,13 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
     fprintf(file, "#!/bin/sh\n");
     fprintf(file, "#Helper script for %s\n\n", linkname);
 
-    /* Just like xdg-menus we DO NOT support running a wine binary other
-     * than one that is already present in the path
-     */
     fprintf(file, "PATH=\"%s\"\nexport PATH\n", getenv("PATH"));
-    fprintf(file, "DYLD_FALLBACK_LIBRARY_PATH=\"%s\"\nexport DYLD_FALLBACK_LIBRARY_PATH\n", getenv("DYLD_FALLBACK_LIBRARY_PATH"));
-    fprintf(file, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n", wine_get_config_dir());
-    fprintf(file, "\nexec sh -c \"exec wine %s %s\"\n\n", path, args);
+    libpath = getenv("DYLD_FALLBACK_LIBRARY_PATH");
+    if (libpath)
+        fprintf(file, "DYLD_FALLBACK_LIBRARY_PATH=\"%s\"\nexport DYLD_FALLBACK_LIBRARY_PATH\n", libpath);
+    fprintf(file, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n\n", wine_get_config_dir());
+
+    fprintf(file, "exec sh -c \"exec wine %s %s\"\n\n", path, args);
 
     fprintf(file, "#EOF\n");
 
