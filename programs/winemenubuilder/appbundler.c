@@ -30,7 +30,7 @@
  * There can be more to a bundle depending on the target, what resources
  * it contains and what the target platform but this simplifed format
  * is all we really need for now for Wine.
- * 
+ *
  * TODO:
  * - Add support for writing bundles to the Desktop
  * - Convert to using CoreFoundation API rather than standard unix file ops
@@ -39,7 +39,7 @@
  *   and or Wine Version information come to mind.
  * - Association Support
  * - sha1hash of target application in bundle plist
- */ 
+ */
 
 #include "config.h"
 #include "wine/port.h"
@@ -66,69 +66,69 @@ char* heap_printf(const char *format, ...);
 BOOL create_directories(char *directory);
 
 #ifdef __APPLE__
- 
+
 //CFPropertyListRef CreateMyPropertyListFromFile(CFURLRef fileURL);
 void WriteMyPropertyListToFile(CFPropertyListRef propertyList, CFURLRef fileURL );
- 
- 
+
+
 CFDictionaryRef CreateMyDictionary(const char *linkname)
 {
    CFMutableDictionaryRef dict;
    CFStringRef linkstr;
 
    linkstr = CFStringCreateWithCString(NULL, linkname, CFStringGetSystemEncoding());
- 
- 
+
+
    /* Create a dictionary that will hold the data. */
    dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
             0,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks );
- 
-   /* Put the various items into the dictionary. */ 
+
+   /* Put the various items into the dictionary. */
    /* FIXME - Some values assumed the ought not to be */
-   CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") ); 
+   CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
    CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), linkstr );
-   CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") ); 
-   CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") ); 
+   CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
+   CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
    CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
-   CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") ); 
-   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") ); 
-   CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("???") ); 
-   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") ); 
+   CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
+   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
+   CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("???") );
+   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
    /* Fixme - install a default icon */
-   //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") ); 
-   
+   //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
+
    return dict;
 }
- 
-void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL ) 
+
+void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL )
 {
    CFDataRef xmlData;
    Boolean status;
    SInt32 errorCode;
- 
+
    /* Convert the property list into XML data */
    xmlData = CFPropertyListCreateXMLData( kCFAllocatorDefault, propertyList );
- 
+
    /* Write the XML data to the file */
    status = CFURLWriteDataAndPropertiesToResource (
                fileURL,
                xmlData,
                NULL,
                &errorCode);
- 
+
    // CFRelease(xmlData);
 }
 
-static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL ) 
+static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
 {
     CFPropertyListRef propertyList;
     CFStringRef       errorString;
     CFDataRef         resourceData;
     Boolean           status;
     SInt32            errorCode;
- 
+
     /* Read the XML file */
     status = CFURLCreateDataAndPropertiesFromResource(
                kCFAllocatorDefault,
@@ -137,13 +137,13 @@ static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
                NULL,
                NULL,
                &errorCode);
- 
+
     /* Reconstitute the dictionary using the XML data. */
     propertyList = CFPropertyListCreateFromXMLData( kCFAllocatorDefault,
                resourceData,
                kCFPropertyListImmutable,
                &errorString);
- 
+
     //CFRelease( resourceData );
     return propertyList;
 }
@@ -156,8 +156,8 @@ BOOL modify_plist_value(char *plist_path, const char *key, char *value)
     CFStringRef keystr;
     CFStringRef valuestr;
     CFURLRef fileURL;
- 
-    WINE_TRACE("Modifying Bundle Info.plist at %s\n", plist_path); 
+
+    WINE_TRACE("Modifying Bundle Info.plist at %s\n", plist_path);
 
     /* Convert strings to something these Mac APIs can handle */
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
@@ -201,9 +201,9 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
     CFURLRef fileURL;
 
     /* Append all of the filename and path stuff and shove it in to CFStringRef */
-    plist_path = heap_printf("%s/%s", path_to_bundle_contents, info_dot_plist_file); 
+    plist_path = heap_printf("%s/%s", path_to_bundle_contents, info_dot_plist_file);
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
- 
+
     /* Construct a complex dictionary object */
     propertyList = CreateMyDictionary(linkname);
 
@@ -216,11 +216,11 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
     /* Write the property list to the file */
     WriteMyPropertyListToFile( propertyList, fileURL );
     CFRelease(propertyList);
- 
+
 #if 0
     /* Recreate the property list from the file */
     propertyList = CreateMyPropertyListFromFile( fileURL );
- 
+
     /* Release any objects to which we have references */
     CFRelease(propertyList);
 #endif
@@ -256,7 +256,7 @@ static BOOL generate_pkginfo_file(const char* path_to_bundle_contents)
 
 
 /* inspired by write_desktop_entry() in xdg support code */
-static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char *path, 
+static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char *path,
                                    const char *args, const char *linkname)
 {
     FILE *file;
@@ -280,10 +280,10 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
             wine_get_config_dir(), path, args);
 
     fprintf(file, "#EOF");
-    
-    fclose(file);    
+
+    fclose(file);
     chmod(bundle_and_script,0755);
-    
+
     return TRUE;
 }
 
@@ -299,7 +299,7 @@ BOOL build_app_bundle(const char *path, const char *args, const char *linkname)
     static const char macos[] = "MacOS";
     static const char resources[] = "Resources";
     static const char resources_lang[] = "English.lproj"; /* FIXME */
-    
+
     WINE_TRACE("bundle file name %s\n", wine_dbgstr_a(linkname));
 
     bundle_name = heap_printf("%s.%s", linkname, extentsion);
@@ -321,7 +321,7 @@ BOOL build_app_bundle(const char *path, const char *args, const char *linkname)
     if(ret==FALSE)
        return ret;
 
-    ret = generate_pkginfo_file(path_to_bundle_contents); 
+    ret = generate_pkginfo_file(path_to_bundle_contents);
     if(ret==FALSE)
        return ret;
 
@@ -338,7 +338,7 @@ BOOL init_apple_de(void)
 {
 #ifdef __APPLE__
     WCHAR shellDesktopPath[MAX_PATH];
-    
+
     HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT, shellDesktopPath);
     if (SUCCEEDED(hr))
         mac_desktop_dir = wine_get_unix_file_name(shellDesktopPath);
@@ -356,7 +356,7 @@ BOOL init_apple_de(void)
         WINE_TRACE("%s\n", wine_applications_dir);
 
         return TRUE;
-    }    
+    }
     else
     {
         WINE_ERR("out of memory\n");

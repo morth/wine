@@ -1612,7 +1612,7 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     {
         ret = build_app_bundle(path,args,linkname);
     }
-    
+
     desktopPath = heap_printf("%s/applications/wine/%s.desktop", xdg_data_dir, link);
     if (!desktopPath)
     {
@@ -2801,7 +2801,7 @@ static BOOL extract_wait ( int iIconId, LPCWSTR szPath, LPCWSTR szIconPath, char
             if (bWait)
             {
                 WINE_WARN("Unable to extract icon, deferring.\n");
-                return FALSE; 
+                return FALSE;
             }
             WINE_ERR("failed to extract icon from %s\n",
                      wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
@@ -2871,7 +2871,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
     }
 
     /* insure the icon's are generated after bundle creation */
-    if(!mac_desktop_dir) 
+    if(!mac_desktop_dir)
     {
         if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
             goto cleanup;
@@ -2960,13 +2960,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             lastEntry = link_name;
         else
             ++lastEntry;
- 
+
         if(mac_desktop_dir)
         {
             WINE_FIXME("Unable to write bundles to the Desktop\n");
             goto cleanup;
         }
- 
+
         location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
         if (location)
         {
@@ -3292,7 +3292,7 @@ static BOOL Process_URL( LPCWSTR urlname, BOOL bWait )
         WINE_FIXME("Url processing is currently unsupported on this platform\n");
         return 1;
     }
-    
+
     if( !urlname[0] )
     {
         WINE_ERR("URL name missing\n");
