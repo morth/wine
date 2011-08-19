@@ -59,7 +59,7 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 
-char *bundle_name = NULL;
+char *path_to_bundle = NULL;
 char *mac_desktop_dir = NULL;
 char *wine_applications_dir = NULL;
 char* heap_printf(const char *format, ...);
@@ -294,11 +294,11 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *path, const char *args, const char *linkname)
+BOOL build_app_bundle(const char *dir, const char *path, const char *args, const char *linkname)
 {
 #ifdef __APPLE__
     BOOL ret = FALSE;
-    char *path_to_bundle, *path_to_bundle_contents, *path_to_bundle_macos;
+    char *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
     char *path_to_bundle_resources, *path_to_bundle_resources_lang;
     static const char extentsion[] = "app";
     static const char contents[] = "Contents";
@@ -308,8 +308,11 @@ BOOL build_app_bundle(const char *path, const char *args, const char *linkname)
 
     WINE_TRACE("bundle file name %s\n", wine_dbgstr_a(linkname));
 
+    if (!dir)
+	dir = wine_applications_dir;
+
     bundle_name = heap_printf("%s.%s", linkname, extentsion);
-    path_to_bundle = heap_printf("%s/%s", wine_applications_dir, bundle_name);
+    path_to_bundle = heap_printf("%s/%s", dir, bundle_name);
     path_to_bundle_contents = heap_printf("%s/%s", path_to_bundle, contents);
     path_to_bundle_macos =  heap_printf("%s/%s", path_to_bundle_contents, macos);
     path_to_bundle_resources = heap_printf("%s/%s", path_to_bundle_contents, resources);

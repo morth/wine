@@ -196,12 +196,11 @@ static char *xdg_data_dir;
 static char *xdg_desktop_dir;
 
 /* Mac OS X .app bundle support */
-extern char *wine_applications_dir;
 extern char *mac_desktop_dir;
-extern char *bundle_name;
+extern char *path_to_bundle;
 
 BOOL init_apple_de(void);
-BOOL build_app_bundle(const char *path, const char *args, const char *linkname);
+BOOL build_app_bundle(const char *dir, const char *path, const char *args, const char *linkname);
 
 static WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
@@ -1149,9 +1148,9 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         goto end;
     }
 
-    WINE_FIXME("--------icns files should go in %s/Contents/Resources---------\n", wine_dbgstr_a(bundle_name));
+    WINE_FIXME("--------icns files should go in %s/Contents/Resources---------\n", wine_dbgstr_a(path_to_bundle));
 
-    bundle_path = heap_printf("%s/%s/Contents/Resources", wine_applications_dir, bundle_name);
+    bundle_path = heap_printf("%s/Contents/Resources", path_to_bundle);
     WINE_FIXME("--------icns files should go in %s- (full path)------\n", wine_dbgstr_a(bundle_path));
 
  //   icnsName = heap_printf("%s.icns", guidStrA);
@@ -1179,7 +1178,7 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         goto end;
     }
 
-    plist_path = heap_printf("%s/%s/Contents/Info.plist", wine_applications_dir, bundle_name);
+    plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
     WINE_FIXME("--------attempting to modify %s- (full path)------\n", wine_dbgstr_a(plist_path));
     icnsName = heap_printf("%s.icns", guidStrA);
     ret = modify_plist_value(plist_path, iconKey, icnsName);
@@ -1610,7 +1609,7 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     /* Check for OS X first before attempting xdg support */
     if (mac_desktop_dir)
     {
-        ret = build_app_bundle(path,args,linkname);
+        ret = build_app_bundle(NULL, path, args, linkname);
         if (!ret)
             goto end;
     }
@@ -2963,30 +2962,40 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         else
             ++lastEntry;
 
-        if(mac_desktop_dir)
+        if (csidl == CSIDL_COMMON_DESKTOPDIRECTORY)
         {
-            WINE_FIXME("Unable to write bundles to the Desktop\n");
-            goto cleanup;
-        }
-
-        location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
-        if (location)
-        {
-            if (csidl == CSIDL_COMMON_DESKTOPDIRECTORY)
+            char *link_arg = escape_unix_link_arg(unix_link);
+            if (link_arg)
             {
-                char *link_arg = escape_unix_link_arg(unix_link);
-                if (link_arg)
+                if (mac_desktop_dir)
+                    r = !build_app_bundle(mac_desktop_dir, start_path, link_arg, lastEntry);
+                else
                 {
-                    r = !write_desktop_entry(unix_link, location, lastEntry,
-                        start_path, link_arg, description, work_dir, icon_name);
-                    HeapFree(GetProcessHeap(), 0, link_arg);
+                    location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
+                    if (location)
+                    {
+                        r = !write_desktop_entry(unix_link, location, lastEntry,
+                            start_path, link_arg, description, work_dir, icon_name);
+                        HeapFree(GetProcessHeap(), 0, link_arg);
+                        if (r == 0)
+                            chmod(location, 0755);
+                    }
                 }
             }
+        }
+        else
+        {
+            if (mac_desktop_dir)
+                r = !build_app_bundle(mac_desktop_dir, escaped_path, escaped_args, lastEntry);
             else
-                r = !write_desktop_entry(NULL, location, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
-            if (r == 0)
-                chmod(location, 0755);
-            HeapFree(GetProcessHeap(), 0, location);
+            {
+                location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
+                if (location)
+                {
+                    r = !write_desktop_entry(NULL, location, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
+                    HeapFree(GetProcessHeap(), 0, location);
+                }
+            }
         }
     }
     else
@@ -2997,13 +3006,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             r = !write_menu_entry(unix_link, link_name, start_path, link_arg, description, work_dir, icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
 
-            /* Try the icons again if we are on OS X */
-            if(mac_desktop_dir)
-            {
-                if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
-                    goto cleanup;
-            }
         }
+    }
+    /* Try the icons again if we are on OS X */
+    if(mac_desktop_dir)
+    {
+        if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
+            goto cleanup;
     }
 
     ReleaseSemaphore( hsem, 1, NULL );
