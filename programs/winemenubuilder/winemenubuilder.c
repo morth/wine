@@ -195,6 +195,14 @@ static char *xdg_config_dir;
 static char *xdg_data_dir;
 static char *xdg_desktop_dir;
 
+/* Mac OS X .app bundle support */
+extern char *wine_applications_dir;
+extern char *mac_desktop_dir;
+extern char *bundle_name;
+
+BOOL init_apple_de(void);
+BOOL build_app_bundle(const char *path, const char *args, const char *linkname);
+
 static WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
 
@@ -229,7 +237,7 @@ static char *strdupA( const char *str )
     return ret;
 }
 
-static char* heap_printf(const char *format, ...)
+char* heap_printf(const char *format, ...)
 {
     va_list args;
     int size = 4096;
@@ -316,7 +324,7 @@ static void write_xml_text(FILE *file, const char *text)
     }
 }
 
-static BOOL create_directories(char *directory)
+BOOL create_directories(char *directory)
 {
     BOOL ret = TRUE;
     int i;
@@ -1060,6 +1068,8 @@ static inline int size_to_slot(int size)
     return -1;
 }
 
+BOOL modify_plist_value(char *plist_path, const char *key, char *value);
+
 static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
                                    const char *destFilename, char **nativeIdentifier)
 {
@@ -1075,8 +1085,13 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
     WCHAR *guidStrW = NULL;
     char *guidStrA = NULL;
     char *icnsPath = NULL;
+    char *icnsName = NULL;
+    char *bundle_path = NULL;
+    char *plist_path = NULL;
+    const char *iconKey = "CFBundleIconFile";
     LARGE_INTEGER zero;
     HRESULT hr;
+    BOOL ret = FALSE;
 
     hr = read_ico_direntries(icoStream, &iconDirEntries, &numEntries);
     if (FAILED(hr))
@@ -1133,7 +1148,15 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         WINE_WARN("out of memory converting GUID string\n");
         goto end;
     }
-    icnsPath = heap_printf("/tmp/%s.icns", guidStrA);
+
+    WINE_FIXME("--------icns files should go in %s/Contents/Resources---------\n", wine_dbgstr_a(bundle_name));
+
+    bundle_path = heap_printf("%s/%s/Contents/Resources", wine_applications_dir, bundle_name);
+    WINE_FIXME("--------icns files should go in %s- (full path)------\n", wine_dbgstr_a(bundle_path));
+
+ //   icnsName = heap_printf("%s.icns", guidStrA);
+    icnsPath = heap_printf("%s/%s.icns", bundle_path, guidStrA);
+
     if (icnsPath == NULL)
     {
         hr = E_OUTOFMEMORY;
@@ -1156,6 +1179,11 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         goto end;
     }
 
+    plist_path = heap_printf("%s/%s/Contents/Info.plist", wine_applications_dir, bundle_name);
+    WINE_FIXME("--------attempting to modify %s- (full path)------\n", wine_dbgstr_a(plist_path));
+    icnsName = heap_printf("%s.icns", guidStrA);
+    ret = modify_plist_value(plist_path, iconKey, icnsName);
+
 end:
     HeapFree(GetProcessHeap(), 0, iconDirEntries);
     CoTaskMemFree(guidStrW);
@@ -1164,6 +1192,7 @@ end:
         *nativeIdentifier = icnsPath;
     else
         HeapFree(GetProcessHeap(), 0, icnsPath);
+
     return hr;
 }
 #else
@@ -1578,6 +1607,12 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     else
         ++linkname;
 
+    /* Check for OS X first before attempting xdg support */
+    if (mac_desktop_dir)
+    {
+        ret = build_app_bundle(path,args,linkname);
+    }
+    
     desktopPath = heap_printf("%s/applications/wine/%s.desktop", xdg_data_dir, link);
     if (!desktopPath)
     {
@@ -2751,6 +2786,29 @@ static char* escape_unix_link_arg(LPCSTR unix_link)
     return ret;
 }
 
+static BOOL extract_wait ( int iIconId, LPCWSTR szPath, LPCWSTR szIconPath, char *icon_name, BOOL bWait )
+{
+    BOOL ret = TRUE;
+        /* extract the icon */
+        if( szIconPath[0] )
+            icon_name = extract_icon( szIconPath , iIconId, NULL, bWait );
+        else
+            icon_name = extract_icon( szPath, iIconId, NULL, bWait );
+
+        /* fail - try once again after parent process exit */
+        if( !icon_name )
+        {
+            if (bWait)
+            {
+                WINE_WARN("Unable to extract icon, deferring.\n");
+                return FALSE; 
+            }
+            WINE_ERR("failed to extract icon from %s\n",
+                     wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
+        }
+    return ret;
+}
+
 static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
 {
     static const WCHAR startW[] = {'\\','c','o','m','m','a','n','d',
@@ -2812,22 +2870,11 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             WINE_TRACE("pidl path  : %s\n", wine_dbgstr_w(szPath));
     }
 
-    /* extract the icon */
-    if( szIconPath[0] )
-        icon_name = extract_icon( szIconPath , iIconId, NULL, bWait );
-    else
-        icon_name = extract_icon( szPath, iIconId, NULL, bWait );
-
-    /* fail - try once again after parent process exit */
-    if( !icon_name )
+    /* insure the icon's are generated after bundle creation */
+    if(!mac_desktop_dir) 
     {
-        if (bWait)
-        {
-            WINE_WARN("Unable to extract icon, deferring.\n");
+        if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
             goto cleanup;
-        }
-        WINE_ERR("failed to extract icon from %s\n",
-                 wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
     }
 
     unix_link = wine_get_unix_file_name(link);
@@ -2913,6 +2960,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             lastEntry = link_name;
         else
             ++lastEntry;
+ 
+        if(mac_desktop_dir)
+        {
+            WINE_FIXME("Unable to write bundles to the Desktop\n");
+            goto cleanup;
+        }
+ 
         location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
         if (location)
         {
@@ -2940,6 +2994,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         {
             r = !write_menu_entry(unix_link, link_name, start_path, link_arg, description, work_dir, icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
+
+            /* Try the icons again if we are on OS X */
+            if(mac_desktop_dir)
+            {
+                if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
+                    goto cleanup;
+            }
         }
     }
 
@@ -3226,6 +3287,12 @@ static BOOL Process_URL( LPCWSTR urlname, BOOL bWait )
 
     WINE_TRACE("%s, wait %d\n", wine_dbgstr_w(urlname), bWait);
 
+    if(mac_desktop_dir)
+    {
+        WINE_FIXME("Url processing is currently unsupported on this platform\n");
+        return 1;
+    }
+    
     if( !urlname[0] )
     {
         WINE_ERR("URL name missing\n");
@@ -3279,6 +3346,12 @@ static void RefreshFileTypeAssociations(void)
     char *packages_dir = NULL;
     char *applications_dir = NULL;
     BOOL hasChanged;
+
+    if(mac_desktop_dir)
+    {
+        WINE_FIXME("FileType Associations are currently unsupported on this platform\n");
+        goto end;
+    }
 
     hSem = CreateSemaphoreA( NULL, 1, 1, "winemenubuilder_semaphore");
     if( WAIT_OBJECT_0 != MsgWaitForMultipleObjects( 1, &hSem, FALSE, INFINITE, QS_ALLINPUT ) )
@@ -3602,7 +3675,11 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
     HRESULT hr;
     int ret = 0;
 
+#ifdef __APPLE__
+    if (!init_apple_de())
+#else
     if (!init_xdg())
+#endif
         return 1;
 
     hr = CoInitialize(NULL);
