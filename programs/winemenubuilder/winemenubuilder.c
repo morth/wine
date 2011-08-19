@@ -3616,6 +3616,7 @@ static WCHAR *next_token( LPWSTR *p )
     return token;
 }
 
+#ifndef __APPLE__
 static BOOL init_xdg(void)
 {
     WCHAR shellDesktopPath[MAX_PATH];
@@ -3656,6 +3657,7 @@ static BOOL init_xdg(void)
     WINE_ERR("out of memory\n");
     return FALSE;
 }
+#endif
 
 /***********************************************************************
  *

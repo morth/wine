@@ -89,12 +89,13 @@ CFDictionaryRef CreateMyDictionary(const char *linkname)
    /* FIXME - Some values assumed the ought not to be */
    CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
    CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), linkstr );
-   CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
+   /* FIXME - Avoid identifier if not unique. */
+   //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
    CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
    CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
    CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
    CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("???") );
+   // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
    CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
    /* Fixme - install a default icon */
    //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
@@ -233,6 +234,7 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
 #endif /* __APPLE__ */
 
 
+#if 0
 /* TODO: If I understand this file correctly, it is used for associations */
 static BOOL generate_pkginfo_file(const char* path_to_bundle_contents)
 {
@@ -253,6 +255,7 @@ static BOOL generate_pkginfo_file(const char* path_to_bundle_contents)
     fclose(file);
     return TRUE;
 }
+#endif
 
 
 /* inspired by write_desktop_entry() in xdg support code */
@@ -276,13 +279,15 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
     /* Just like xdg-menus we DO NOT support running a wine binary other
      * than one that is already present in the path
      */
-    fprintf(file, "WINEPREFIX=\"%s\" wine \"%s\" %s\n\n",
-            wine_get_config_dir(), path, args);
+    fprintf(file, "PATH=\"%s\"\nexport PATH\n", getenv("PATH"));
+    fprintf(file, "DYLD_FALLBACK_LIBRARY_PATH=\"%s\"\nexport DYLD_FALLBACK_LIBRARY_PATH\n", getenv("DYLD_FALLBACK_LIBRARY_PATH"));
+    fprintf(file, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n", wine_get_config_dir());
+    fprintf(file, "\nexec sh -c \"exec wine %s %s\"\n\n", path, args);
 
-    fprintf(file, "#EOF");
+    fprintf(file, "#EOF\n");
 
     fclose(file);
-    chmod(bundle_and_script,0755);
+    chmod(bundle_and_script, 0755);
 
     return TRUE;
 }
@@ -321,9 +326,11 @@ BOOL build_app_bundle(const char *path, const char *args, const char *linkname)
     if(ret==FALSE)
        return ret;
 
+#if 0
     ret = generate_pkginfo_file(path_to_bundle_contents);
     if(ret==FALSE)
        return ret;
+#endif
 
     ret = generate_plist(path_to_bundle_contents, linkname);
     if(ret==FALSE)
