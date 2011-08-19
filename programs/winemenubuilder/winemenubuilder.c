@@ -1070,7 +1070,8 @@ static inline int size_to_slot(int size)
 BOOL modify_plist_value(char *plist_path, const char *key, char *value);
 
 static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier)
+                                   const char *destFilename, char **nativeIdentifier,
+                                   BOOL test_only)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -1162,6 +1163,10 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         WINE_WARN("out of memory creating ICNS path\n");
         goto end;
     }
+
+    if (test_only)
+        goto end;
+
     zero.QuadPart = 0;
     hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
     if (FAILED(hr))
@@ -1191,7 +1196,6 @@ end:
         *nativeIdentifier = icnsPath;
     else
         HeapFree(GetProcessHeap(), 0, icnsPath);
-
     return hr;
 }
 #else
@@ -1216,7 +1220,8 @@ static void refresh_icon_cache(const char *iconsDir)
 }
 
 static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier)
+                                   const char *destFilename, char **nativeIdentifier,
+                                   BOOL test_only)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -1265,6 +1270,9 @@ static HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR ico
         hr = E_OUTOFMEMORY;
         goto end;
     }
+
+    if (test_only)
+        goto end;
 
     for (i = 0; i < numEntries; i++)
     {
@@ -1337,7 +1345,7 @@ end:
 #endif /* defined(__APPLE__) */
 
 /* extract an icon from an exe or icon file; helper for IPersistFile_fnSave */
-static char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait)
+static char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, BOOL test_only)
 {
     IStream *stream = NULL;
     HRESULT hr;
@@ -1351,7 +1359,7 @@ static char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename,
         WINE_WARN("opening icon %s index %d failed, hr=0x%08X\n", wine_dbgstr_w(icoPathW), index, hr);
         goto end;
     }
-    hr = platform_write_icon(stream, index, icoPathW, destFilename, &nativeIdentifier);
+    hr = platform_write_icon(stream, index, icoPathW, destFilename, &nativeIdentifier, test_only);
     if (FAILED(hr))
         WINE_WARN("writing icon failed, error 0x%08X\n", hr);
 
@@ -2639,7 +2647,7 @@ static BOOL generate_associations(const char *xdg_data_home, const char *package
                                 *comma = 0;
                                 index = atoiW(comma + 1);
                             }
-                            iconA = extract_icon(iconW, index, flattened_mime, FALSE);
+                            iconA = extract_icon(iconW, index, flattened_mime, FALSE, FALSE);
                             HeapFree(GetProcessHeap(), 0, flattened_mime);
                         }
                     }
@@ -2661,7 +2669,7 @@ static BOOL generate_associations(const char *xdg_data_home, const char *package
 
             executableW = assoc_query(ASSOCSTR_EXECUTABLE, extensionW, openW);
             if (executableW)
-                openWithIconA = extract_icon(executableW, 0, NULL, FALSE);
+                openWithIconA = extract_icon(executableW, 0, NULL, FALSE, FALSE);
 
             friendlyAppNameW = assoc_query(ASSOCSTR_FRIENDLYAPPNAME, extensionW, openW);
             if (friendlyAppNameW)
@@ -2787,29 +2795,6 @@ static char* escape_unix_link_arg(LPCSTR unix_link)
     return ret;
 }
 
-static BOOL extract_wait ( int iIconId, LPCWSTR szPath, LPCWSTR szIconPath, char *icon_name, BOOL bWait )
-{
-    BOOL ret = TRUE;
-        /* extract the icon */
-        if( szIconPath[0] )
-            icon_name = extract_icon( szIconPath , iIconId, NULL, bWait );
-        else
-            icon_name = extract_icon( szPath, iIconId, NULL, bWait );
-
-        /* fail - try once again after parent process exit */
-        if( !icon_name )
-        {
-            if (bWait)
-            {
-                WINE_WARN("Unable to extract icon, deferring.\n");
-                return FALSE;
-            }
-            WINE_ERR("failed to extract icon from %s\n",
-                     wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
-        }
-    return ret;
-}
-
 static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
 {
     static const WCHAR startW[] = {'\\','c','o','m','m','a','n','d',
@@ -2871,11 +2856,22 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             WINE_TRACE("pidl path  : %s\n", wine_dbgstr_w(szPath));
     }
 
-    /* insure the icon's are generated after bundle creation */
-    if(!mac_desktop_dir)
+    /* extract the icon */
+    if( szIconPath[0] )
+        icon_name = extract_icon( szIconPath , iIconId, NULL, bWait, !!mac_desktop_dir );
+    else
+        icon_name = extract_icon( szPath, iIconId, NULL, bWait, !!mac_desktop_dir );
+
+    /* fail - try once again after parent process exit */
+    if( !icon_name )
     {
-        if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
+        if (bWait)
+        {
+            WINE_WARN("Unable to extract icon, deferring.\n");
             goto cleanup;
+        }
+        WINE_ERR("failed to extract icon from %s\n",
+                 wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
     }
 
     unix_link = wine_get_unix_file_name(link);
@@ -3005,14 +3001,15 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         {
             r = !write_menu_entry(unix_link, link_name, start_path, link_arg, description, work_dir, icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
-
         }
     }
     /* Try the icons again if we are on OS X */
-    if(mac_desktop_dir)
+    if (mac_desktop_dir)
     {
-        if (!extract_wait ( iIconId, szPath, szIconPath, icon_name, bWait ))
-            goto cleanup;
+        if( szIconPath[0] )
+            icon_name = extract_icon( szIconPath , iIconId, NULL, bWait, FALSE );
+        else
+            icon_name = extract_icon( szPath, iIconId, NULL, bWait, FALSE );
     }
 
     ReleaseSemaphore( hsem, 1, NULL );
@@ -3115,7 +3112,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
             {
                 if (pv[0].vt == VT_LPWSTR && pv[0].u.pwszVal)
                 {
-                    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait );
+                    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, FALSE );
 
                     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
                 }
