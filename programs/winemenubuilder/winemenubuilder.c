@@ -1611,6 +1611,8 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     if (mac_desktop_dir)
     {
         ret = build_app_bundle(path,args,linkname);
+        if (!ret)
+            goto end;
     }
 
     desktopPath = heap_printf("%s/applications/wine/%s.desktop", xdg_data_dir, link);
@@ -3616,7 +3618,6 @@ static WCHAR *next_token( LPWSTR *p )
     return token;
 }
 
-#ifndef __APPLE__
 static BOOL init_xdg(void)
 {
     WCHAR shellDesktopPath[MAX_PATH];
@@ -3657,7 +3658,6 @@ static BOOL init_xdg(void)
     WINE_ERR("out of memory\n");
     return FALSE;
 }
-#endif
 
 /***********************************************************************
  *
@@ -3679,9 +3679,9 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
 
 #ifdef __APPLE__
     if (!init_apple_de())
-#else
-    if (!init_xdg())
+        return 1;
 #endif
+    if (!init_xdg())
         return 1;
 
     hr = CoInitialize(NULL);
