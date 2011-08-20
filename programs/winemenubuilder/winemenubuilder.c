@@ -76,6 +76,8 @@
 #ifdef HAVE_FNMATCH_H
 #include <fnmatch.h>
 #endif
+#include <dirent.h>
+#include <limits.h>
 
 #define COBJMACROS
 #define NONAMELESSUNION
@@ -200,7 +202,7 @@ extern char *mac_desktop_dir;
 extern char *path_to_bundle;
 
 BOOL init_apple_de(void);
-BOOL build_app_bundle(const char *dir, const char *path, const char *args, const char *linkname);
+BOOL build_app_bundle(const char *unix_link, const char *dir, const char *path, const char *args, const char *linkname);
 
 static WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
@@ -1387,7 +1389,7 @@ static HKEY open_menus_reg_key(void)
     return NULL;
 }
 
-static DWORD register_menus_entry(const char *unix_file, const char *windows_file)
+DWORD register_menus_entry(const char *unix_file, const char *windows_file)
 {
     WCHAR *unix_fileW;
     WCHAR *windows_fileW;
@@ -1423,6 +1425,54 @@ static DWORD register_menus_entry(const char *unix_file, const char *windows_fil
     else
         ret = ERROR_NOT_ENOUGH_MEMORY;
     return ret;
+}
+
+static BOOL remove_unix_link(const char *unix_link)
+{
+    struct stat st;
+
+    if (lstat(unix_link, &st))
+        return FALSE;
+
+    if (S_ISDIR(st.st_mode))
+    {
+        char path[PATH_MAX], *epath;
+        DIR *dir = opendir(unix_link);
+        struct dirent *ent;
+
+        if (!dir)
+            return FALSE;
+
+        epath = stpncpy(path, unix_link, PATH_MAX);
+        if (epath - path >= PATH_MAX - 1)
+            return FALSE;
+        *epath++ = '/';
+
+        while ((ent = readdir(dir)))
+        {
+            if ((epath - path) + ent->d_namlen >= PATH_MAX)
+            {
+                closedir(dir);
+                return FALSE;
+            }
+            strcpy(epath, ent->d_name);
+            if (!remove_unix_link(path))
+            {
+                closedir(dir);
+                return FALSE;
+            }
+        }
+        closedir(dir);
+
+        if (rmdir(unix_link))
+            return FALSE;
+    }
+    else
+    {
+        if (unlink(unix_link))
+            return FALSE;
+    }
+    return TRUE;
 }
 
 static BOOL write_desktop_entry(const char *unix_link, const char *location, const char *linkname,
@@ -1617,7 +1667,7 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     /* Check for OS X first before attempting xdg support */
     if (mac_desktop_dir)
     {
-        ret = build_app_bundle(NULL, path, args, linkname);
+        ret = build_app_bundle(unix_link, NULL, path, args, linkname);
         if (!ret)
             goto end;
     }
@@ -2416,7 +2466,7 @@ static BOOL cleanup_associations(void)
                     if (desktopFile)
                     {
                         WINE_TRACE("removing file type association for %s\n", wine_dbgstr_w(extensionW));
-                        remove(desktopFile);
+                        remove_unix_link(desktopFile);
                     }
                     RegDeleteKeyW(assocKey, extensionW);
                     hasChanged = TRUE;
@@ -2964,7 +3014,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             if (link_arg)
             {
                 if (mac_desktop_dir)
-                    r = !build_app_bundle(mac_desktop_dir, start_path, link_arg, lastEntry);
+                    r = !build_app_bundle(unix_link, mac_desktop_dir, start_path, link_arg, lastEntry);
                 else
                 {
                     location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
@@ -2982,7 +3032,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         else
         {
             if (mac_desktop_dir)
-                r = !build_app_bundle(mac_desktop_dir, escaped_path, escaped_args, lastEntry);
+                r = !build_app_bundle(unix_link, mac_desktop_dir, escaped_path, escaped_args, lastEntry);
             else
             {
                 location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
@@ -3466,7 +3516,7 @@ static void cleanup_menus(void)
                     if (stat(windows_file, &filestats) < 0 && errno == ENOENT)
                     {
                         WINE_TRACE("removing menu related file %s\n", unix_file);
-                        remove(unix_file);
+                        remove_unix_link(unix_file);
                         RegDeleteValueW(hkey, value);
                     }
                     else

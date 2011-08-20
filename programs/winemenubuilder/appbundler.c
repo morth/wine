@@ -64,6 +64,7 @@ char *mac_desktop_dir = NULL;
 char *wine_applications_dir = NULL;
 char* heap_printf(const char *format, ...);
 BOOL create_directories(char *directory);
+DWORD register_menus_entry(const char *unix_file, const char *windows_file);
 
 #ifdef __APPLE__
 
@@ -294,7 +295,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *dir, const char *path, const char *args, const char *linkname)
+BOOL build_app_bundle(const char *unix_link, const char *dir, const char *path, const char *args, const char *linkname)
 {
 #ifdef __APPLE__
     BOOL ret = FALSE;
@@ -339,6 +340,13 @@ BOOL build_app_bundle(const char *dir, const char *path, const char *args, const
     ret = generate_plist(path_to_bundle_contents, linkname);
     if(ret==FALSE)
        return ret;
+
+    if (unix_link)
+    {
+        DWORD ret = register_menus_entry(path_to_bundle, unix_link);
+        if (ret != ERROR_SUCCESS)
+            return FALSE;
+    }
 
 #endif /* __APPLE__ */
     return TRUE;
