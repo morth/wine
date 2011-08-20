@@ -3162,7 +3162,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
             {
                 if (pv[0].vt == VT_LPWSTR && pv[0].u.pwszVal)
                 {
-                    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, FALSE );
+                    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, !!mac_desktop_dir );
 
                     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
                 }
@@ -3202,17 +3202,48 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
             lastEntry = link_name;
         else
             ++lastEntry;
-        location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
-        if (location)
+        if (mac_desktop_dir)
+            r = !build_app_bundle(NULL, start_path, escaped_urlPath, mac_desktop_dir, lastEntry, lastEntry);
+        else
         {
-            r = !write_desktop_entry(NULL, location, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
-            if (r == 0)
-                chmod(location, 0755);
-            HeapFree(GetProcessHeap(), 0, location);
+            location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
+            if (location)
+            {
+                r = !write_desktop_entry(NULL, location, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+                if (r == 0)
+                    chmod(location, 0755);
+                HeapFree(GetProcessHeap(), 0, location);
+            }
         }
     }
     else
         r = !write_menu_entry(unix_link, link_name, start_path, escaped_urlPath, NULL, NULL, icon_name);
+    /* Try the icons again if we are on OS X */
+    if (mac_desktop_dir)
+    {
+        hr = url->lpVtbl->QueryInterface(url, &IID_IPropertySetStorage, (void **) &pPropSetStg);
+        if (SUCCEEDED(hr))
+        {
+            hr = IPropertySetStorage_Open(pPropSetStg, &FMTID_Intshcut, STGM_READ | STGM_SHARE_EXCLUSIVE, &pPropStg);
+            if (SUCCEEDED(hr))
+            {
+                hr = IPropertyStorage_ReadMultiple(pPropStg, 2, ps, pv);
+                if (SUCCEEDED(hr))
+                {
+                    if (pv[0].vt == VT_LPWSTR && pv[0].u.pwszVal)
+                    {
+                        icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, FALSE );
+
+                        WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
+                    }
+                    PropVariantClear(&pv[0]);
+                    PropVariantClear(&pv[1]);
+                }
+                IPropertyStorage_Release(pPropStg);
+            }
+            IPropertySetStorage_Release(pPropSetStg);
+        }
+    }
     ret = (r != 0);
     ReleaseSemaphore(hSem, 1, NULL);
 
@@ -3344,12 +3375,6 @@ static BOOL Process_URL( LPCWSTR urlname, BOOL bWait )
     DWORD len;
 
     WINE_TRACE("%s, wait %d\n", wine_dbgstr_w(urlname), bWait);
-
-    if(mac_desktop_dir)
-    {
-        WINE_FIXME("Url processing is currently unsupported on this platform\n");
-        return 1;
-    }
 
     if( !urlname[0] )
     {
