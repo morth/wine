@@ -97,7 +97,6 @@ CFDictionaryRef CreateMyDictionary(const char *linkname)
    CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
    CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
    // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
    /* Fixme - install a default icon */
    //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
 
