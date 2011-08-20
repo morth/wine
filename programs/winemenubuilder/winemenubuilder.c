@@ -202,7 +202,7 @@ extern char *mac_desktop_dir;
 extern char *path_to_bundle;
 
 BOOL init_apple_de(void);
-BOOL build_app_bundle(const char *unix_link, const char *dir, const char *path, const char *args, const char *linkname);
+BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *dir, const char *link, const char *linkname);
 
 static WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
@@ -1667,7 +1667,7 @@ static BOOL write_menu_entry(const char *unix_link, const char *link, const char
     /* Check for OS X first before attempting xdg support */
     if (mac_desktop_dir)
     {
-        ret = build_app_bundle(unix_link, NULL, path, args, linkname);
+        ret = build_app_bundle(unix_link, path, args, NULL, link, linkname);
         if (!ret)
             goto end;
     }
@@ -3014,7 +3014,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             if (link_arg)
             {
                 if (mac_desktop_dir)
-                    r = !build_app_bundle(unix_link, mac_desktop_dir, start_path, link_arg, lastEntry);
+                    r = !build_app_bundle(unix_link, start_path, link_arg, mac_desktop_dir, lastEntry, lastEntry);
                 else
                 {
                     location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);
@@ -3032,7 +3032,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         else
         {
             if (mac_desktop_dir)
-                r = !build_app_bundle(unix_link, mac_desktop_dir, escaped_path, escaped_args, lastEntry);
+                r = !build_app_bundle(unix_link, escaped_path, escaped_args, mac_desktop_dir, lastEntry, lastEntry);
             else
             {
                 location = heap_printf("%s/%s.desktop", xdg_desktop_dir, lastEntry);

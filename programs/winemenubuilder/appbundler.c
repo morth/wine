@@ -295,7 +295,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *unix_link, const char *dir, const char *path, const char *args, const char *linkname)
+BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *dir, const char *link, const char *linkname)
 {
 #ifdef __APPLE__
     BOOL ret = FALSE;
@@ -312,7 +312,7 @@ BOOL build_app_bundle(const char *unix_link, const char *dir, const char *path, 
     if (!dir)
 	dir = wine_applications_dir;
 
-    bundle_name = heap_printf("%s.%s", linkname, extentsion);
+    bundle_name = heap_printf("%s.%s", link, extentsion);
     path_to_bundle = heap_printf("%s/%s", dir, bundle_name);
     path_to_bundle_contents = heap_printf("%s/%s", path_to_bundle, contents);
     path_to_bundle_macos =  heap_printf("%s/%s", path_to_bundle_contents, macos);
@@ -370,7 +370,7 @@ BOOL init_apple_de(void)
 
     if (getenv("HOME"))
     {
-        wine_applications_dir = heap_printf("%s/Applications/wine", getenv("HOME"));
+        wine_applications_dir = heap_printf("%s/Applications/Wine", getenv("HOME"));
         create_directories(wine_applications_dir);
         WINE_TRACE("%s\n", wine_applications_dir);
 
