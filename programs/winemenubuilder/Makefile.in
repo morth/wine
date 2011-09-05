@@ -5,6 +5,7 @@ EXTRALIBS = @COREFOUNDATIONLIB@
 
 C_SRCS = \
 	appbundler.c \
-	winemenubuilder.c
+	winemenubuilder.c \
+	xdg.c
 
 @MAKE_PROG_RULES@

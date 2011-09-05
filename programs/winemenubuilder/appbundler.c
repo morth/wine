@@ -41,85 +41,243 @@
  * - sha1hash of target application in bundle plist
  */
 
+#ifdef __APPLE__
+
 #include "config.h"
 #include "wine/port.h"
 
 #include <stdio.h>
 #include <errno.h>
 
-#include <shlobj.h>
+#define COBJMACROS
+#define NONAMELESSUNION
 
-#ifdef __APPLE__
+#include <windows.h>
+#include <shlobj.h>
+#include <objidl.h>
+#include <shlguid.h>
+#include <appmgmt.h>
+#include <tlhelp32.h>
+#include <intshcut.h>
+#include <shlwapi.h>
+#include <initguid.h>
+
 # include <CoreFoundation/CoreFoundation.h>
-#endif
 
 #include "wine/debug.h"
 #include "wine/library.h"
 
+#include "winemenubuilder.h"
+
 
 WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 
-char *path_to_bundle = NULL;
-char *mac_desktop_dir = NULL;
-char *wine_applications_dir = NULL;
-char* heap_printf(const char *format, ...);
-BOOL create_directories(char *directory);
-DWORD register_menus_entry(const char *unix_file, const char *windows_file);
+static char *path_to_bundle = NULL;
+static char *mac_desktop_dir = NULL;
+static char *wine_applications_dir = NULL;
 
-#ifdef __APPLE__
+DEFINE_GUID(CLSID_WICIcnsEncoder, 0x312fb6f1,0xb767,0x409d,0x8a,0x6d,0x0f,0xc1,0x54,0xd4,0xf0,0x5c);
 
+#define ICNS_SLOTS 6
+
+static inline int size_to_slot(int size)
+{
+    switch (size)
+    {
+        case 16: return 0;
+        case 32: return 1;
+        case 48: return 2;
+        case 128: return 3;
+        case 256: return 4;
+        case 512: return 5;
+    }
+
+    return -1;
+}
+
+BOOL modify_plist_value(char *plist_path, const char *key, char *value);
+
+HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+                                   const char *destFilename, char **nativeIdentifier,
+                                   BOOL before_link)
+{
+    ICONDIRENTRY *iconDirEntries = NULL;
+    int numEntries;
+    struct {
+        int index;
+        int maxBits;
+    } best[ICNS_SLOTS];
+    int indexes[ICNS_SLOTS];
+    int i;
+    GUID guid;
+    WCHAR *guidStrW = NULL;
+    char *guidStrA = NULL;
+    char *icnsPath = NULL;
+    char *icnsName = NULL;
+    char *bundle_path = NULL;
+    char *plist_path = NULL;
+    const char *iconKey = "CFBundleIconFile";
+    LARGE_INTEGER zero;
+    HRESULT hr;
+    BOOL ret = FALSE;
+
+    hr = read_ico_direntries(icoStream, &iconDirEntries, &numEntries);
+    if (FAILED(hr))
+        goto end;
+    for (i = 0; i < ICNS_SLOTS; i++)
+    {
+        best[i].index = -1;
+        best[i].maxBits = 0;
+    }
+    for (i = 0; i < numEntries; i++)
+    {
+        int slot;
+        int width = iconDirEntries[i].bWidth ? iconDirEntries[i].bWidth : 256;
+        int height = iconDirEntries[i].bHeight ? iconDirEntries[i].bHeight : 256;
+
+        WINE_TRACE("[%d]: %d x %d @ %d\n", i, width, height, iconDirEntries[i].wBitCount);
+        if (height != width)
+            continue;
+        slot = size_to_slot(width);
+        if (slot < 0)
+            continue;
+        if (iconDirEntries[i].wBitCount >= best[slot].maxBits)
+        {
+            best[slot].index = i;
+            best[slot].maxBits = iconDirEntries[i].wBitCount;
+        }
+    }
+    numEntries = 0;
+    for (i = 0; i < ICNS_SLOTS; i++)
+    {
+        if (best[i].index >= 0)
+        {
+            indexes[numEntries] = best[i].index;
+            numEntries++;
+        }
+    }
+
+    hr = CoCreateGuid(&guid);
+    if (FAILED(hr))
+    {
+        WINE_WARN("CoCreateGuid failed, error 0x%08X\n", hr);
+        goto end;
+    }
+    hr = StringFromCLSID(&guid, &guidStrW);
+    if (FAILED(hr))
+    {
+        WINE_WARN("StringFromCLSID failed, error 0x%08X\n", hr);
+        goto end;
+    }
+    guidStrA = wchars_to_utf8_chars(guidStrW);
+    if (guidStrA == NULL)
+    {
+        hr = E_OUTOFMEMORY;
+        WINE_WARN("out of memory converting GUID string\n");
+        goto end;
+    }
+
+    WINE_FIXME("--------icns files should go in %s/Contents/Resources---------\n", wine_dbgstr_a(path_to_bundle));
+
+    bundle_path = heap_printf("%s/Contents/Resources", path_to_bundle);
+    WINE_FIXME("--------icns files should go in %s- (full path)------\n", wine_dbgstr_a(bundle_path));
+
+    //   icnsName = heap_printf("%s.icns", guidStrA);
+    icnsPath = heap_printf("%s/%s.icns", bundle_path, guidStrA);
+
+    if (icnsPath == NULL)
+    {
+        hr = E_OUTOFMEMORY;
+        WINE_WARN("out of memory creating ICNS path\n");
+        goto end;
+    }
+
+    if (!before_link)
+    {
+        zero.QuadPart = 0;
+        hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
+        if (FAILED(hr))
+        {
+            WINE_WARN("seeking icon stream failed, error 0x%08X\n", hr);
+            goto end;
+        }
+        hr = convert_to_native_icon(icoStream, indexes, numEntries, &CLSID_WICIcnsEncoder,
+                icnsPath, icoPathW);
+        if (FAILED(hr))
+        {
+            WINE_WARN("converting %s to %s failed, error 0x%08X\n",
+                    wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsPath), hr);
+            goto end;
+        }
+
+        plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
+        WINE_FIXME("--------attempting to modify %s- (full path)------\n", wine_dbgstr_a(plist_path));
+        icnsName = heap_printf("%s.icns", guidStrA);
+        ret = modify_plist_value(plist_path, iconKey, icnsName);
+    }
+
+end:
+    HeapFree(GetProcessHeap(), 0, iconDirEntries);
+    CoTaskMemFree(guidStrW);
+    HeapFree(GetProcessHeap(), 0, guidStrA);
+    if (SUCCEEDED(hr))
+        *nativeIdentifier = icnsPath;
+    else
+        HeapFree(GetProcessHeap(), 0, icnsPath);
+    return hr;
+}
 //CFPropertyListRef CreateMyPropertyListFromFile(CFURLRef fileURL);
 void WriteMyPropertyListToFile(CFPropertyListRef propertyList, CFURLRef fileURL );
 
 
 CFDictionaryRef CreateMyDictionary(const char *linkname)
 {
-   CFMutableDictionaryRef dict;
-   CFStringRef linkstr;
+    CFMutableDictionaryRef dict;
+    CFStringRef linkstr;
 
-   linkstr = CFStringCreateWithCString(NULL, linkname, CFStringGetSystemEncoding());
+    linkstr = CFStringCreateWithCString(NULL, linkname, CFStringGetSystemEncoding());
 
 
-   /* Create a dictionary that will hold the data. */
-   dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
+    /* Create a dictionary that will hold the data. */
+    dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
             0,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks );
 
-   /* Put the various items into the dictionary. */
-   /* FIXME - Some values assumed the ought not to be */
-   CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), linkstr );
-   /* FIXME - Avoid identifier if not unique. */
-   //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
-   CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
-   CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
-   // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
-   /* Fixme - install a default icon */
-   //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
+    /* Put the various items into the dictionary. */
+    /* FIXME - Some values assumed the ought not to be */
+    CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), linkstr );
+    /* FIXME - Avoid identifier if not unique. */
+    //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
+    CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
+    // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
+    /* Fixme - install a default icon */
+    //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
 
-   return dict;
+    return dict;
 }
 
 void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL )
 {
-   CFDataRef xmlData;
-   Boolean status;
-   SInt32 errorCode;
+    CFDataRef xmlData;
+    Boolean status;
+    SInt32 errorCode;
 
-   /* Convert the property list into XML data */
-   xmlData = CFPropertyListCreateXMLData( kCFAllocatorDefault, propertyList );
+    /* Convert the property list into XML data */
+    xmlData = CFPropertyListCreateXMLData( kCFAllocatorDefault, propertyList );
 
-   /* Write the XML data to the file */
-   status = CFURLWriteDataAndPropertiesToResource (
-               fileURL,
-               xmlData,
-               NULL,
-               &errorCode);
+    /* Write the XML data to the file */
+    status = CFURLWriteDataAndPropertiesToResource (
+            fileURL,
+            xmlData,
+            NULL,
+            &errorCode);
 
-   // CFRelease(xmlData);
+    // CFRelease(xmlData);
 }
 
 static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
@@ -132,18 +290,18 @@ static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
 
     /* Read the XML file */
     status = CFURLCreateDataAndPropertiesFromResource(
-               kCFAllocatorDefault,
-               fileURL,
-               &resourceData,
-               NULL,
-               NULL,
-               &errorCode);
+            kCFAllocatorDefault,
+            fileURL,
+            &resourceData,
+            NULL,
+            NULL,
+            &errorCode);
 
     /* Reconstitute the dictionary using the XML data. */
     propertyList = CFPropertyListCreateFromXMLData( kCFAllocatorDefault,
-               resourceData,
-               kCFPropertyListImmutable,
-               &errorString);
+            resourceData,
+            kCFPropertyListImmutable,
+            &errorString);
 
     //CFRelease( resourceData );
     return propertyList;
@@ -168,9 +326,9 @@ BOOL modify_plist_value(char *plist_path, const char *key, char *value)
 
     /* Create a URL that specifies the file we will create to hold the XML data. */
     fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
-                                             pathstr,
-                                             kCFURLPOSIXPathStyle,
-                                             false );
+            pathstr,
+            kCFURLPOSIXPathStyle,
+            false );
 
     /* Open File */
     propertyList = CreateMyPropertyListFromFile( fileURL );
@@ -210,9 +368,9 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
 
     /* Create a URL that specifies the file we will create to hold the XML data. */
     fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
-                                             pathstr,
-                                             kCFURLPOSIXPathStyle,
-                                             false );
+            pathstr,
+            kCFURLPOSIXPathStyle,
+            false );
 
     /* Write the property list to the file */
     WriteMyPropertyListToFile( propertyList, fileURL );
@@ -231,7 +389,6 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
 
     return TRUE;
 }
-#endif /* __APPLE__ */
 
 
 #if 0
@@ -260,7 +417,7 @@ static BOOL generate_pkginfo_file(const char* path_to_bundle_contents)
 
 /* inspired by write_desktop_entry() in xdg support code */
 static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char *path,
-                                   const char *args, const char *linkname)
+        const char *args, const char *linkname)
 {
     FILE *file;
     char *bundle_and_script;
@@ -296,7 +453,6 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 /* build out the directory structure for the bundle and then populate */
 BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *dir, const char *link, const char *linkname)
 {
-#ifdef __APPLE__
     BOOL ret = FALSE;
     char *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
     char *path_to_bundle_resources, *path_to_bundle_resources_lang;
@@ -309,7 +465,7 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
     WINE_TRACE("bundle file name %s\n", wine_dbgstr_a(linkname));
 
     if (!dir)
-	dir = wine_applications_dir;
+        dir = wine_applications_dir;
 
     bundle_name = heap_printf("%s.%s", link, extentsion);
     path_to_bundle = heap_printf("%s/%s", dir, bundle_name);
@@ -328,17 +484,17 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 
     ret = generate_bundle_script(path_to_bundle_macos, path, args, linkname);
     if(ret==FALSE)
-       return ret;
+        return ret;
 
 #if 0
     ret = generate_pkginfo_file(path_to_bundle_contents);
     if(ret==FALSE)
-       return ret;
+        return ret;
 #endif
 
     ret = generate_plist(path_to_bundle_contents, linkname);
     if(ret==FALSE)
-       return ret;
+        return ret;
 
     if (unix_link)
     {
@@ -347,14 +503,30 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
             return FALSE;
     }
 
-#endif /* __APPLE__ */
     return TRUE;
 }
 
-
-BOOL init_apple_de(void)
+int platform_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+        const char *args, const char *descr, const char *workdir, const char *icon)
 {
-#ifdef __APPLE__
+    /* XXX work_dir */
+    return !build_app_bundle(unix_link, path, args, mac_desktop_dir, link_name, link_name);
+}
+
+int platform_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+        const char *args, const char *descr, const char *workdir, const char *icon)
+{
+    /* XXX work_dir */
+    return !build_app_bundle(unix_link, path, args, NULL, link, link_name);
+}
+
+void platform_refresh_file_type_associations(void)
+{
+    WINE_FIXME("FileType Associations are currently unsupported on this platform\n");
+}
+
+BOOL platform_init(void)
+{
     WCHAR shellDesktopPath[MAX_PATH];
 
     HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT, shellDesktopPath);
@@ -380,7 +552,6 @@ BOOL init_apple_de(void)
         WINE_ERR("out of memory\n");
         return FALSE;
     }
-#else
-    return FALSE;
-#endif
 }
+
+#endif
