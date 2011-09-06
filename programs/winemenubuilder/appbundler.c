@@ -464,9 +464,6 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 
     WINE_TRACE("bundle file name %s\n", wine_dbgstr_a(linkname));
 
-    if (!dir)
-        dir = wine_applications_dir;
-
     bundle_name = heap_printf("%s.%s", link, extentsion);
     path_to_bundle = heap_printf("%s/%s", dir, bundle_name);
     path_to_bundle_contents = heap_printf("%s/%s", path_to_bundle, contents);
@@ -517,7 +514,7 @@ int platform_build_menu_link(const char *unix_link, const char *link, const char
         const char *args, const char *descr, const char *workdir, const char *icon)
 {
     /* XXX work_dir */
-    return !build_app_bundle(unix_link, path, args, NULL, link, link_name);
+    return !build_app_bundle(unix_link, path, args, wine_applications_dir, link, link_name);
 }
 
 void platform_refresh_file_type_associations(void)
