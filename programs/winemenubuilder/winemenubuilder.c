@@ -919,11 +919,10 @@ static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppSt
 }
 
 /* extract an icon from an exe or icon file; helper for IPersistFile_fnSave */
-char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, BOOL before_link)
+void extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, char **nativeIdentifier)
 {
     IStream *stream = NULL;
     HRESULT hr;
-    char *nativeIdentifier = NULL;
 
     WINE_TRACE("path=[%s] index=%d destFilename=[%s]\n", wine_dbgstr_w(icoPathW), index, wine_dbgstr_a(destFilename));
 
@@ -933,7 +932,7 @@ char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL b
         WINE_WARN("opening icon %s index %d failed, hr=0x%08X\n", wine_dbgstr_w(icoPathW), index, hr);
         goto end;
     }
-    hr = platform_write_icon(stream, index, icoPathW, destFilename, &nativeIdentifier, before_link);
+    hr = platform_write_icon(stream, index, icoPathW, destFilename, nativeIdentifier);
     if (FAILED(hr))
         WINE_WARN("writing icon failed, error 0x%08X\n", hr);
 
@@ -942,10 +941,9 @@ end:
         IStream_Release(stream);
     if (FAILED(hr))
     {
-        HeapFree(GetProcessHeap(), 0, nativeIdentifier);
-        nativeIdentifier = NULL;
+        HeapFree(GetProcessHeap(), 0, *nativeIdentifier);
+        *nativeIdentifier = NULL;
     }
-    return nativeIdentifier;
 }
 
 static HKEY open_menus_reg_key(void)
@@ -1436,9 +1434,9 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
 
     /* extract the icon, first try */
     if( szIconPath[0] )
-        icon_name = extract_icon( szIconPath , iIconId, NULL, bWait, TRUE );
+        extract_icon( szIconPath , iIconId, NULL, bWait, &icon_name );
     else
-        icon_name = extract_icon( szPath, iIconId, NULL, bWait, TRUE );
+        extract_icon( szPath, iIconId, NULL, bWait, &icon_name );
 
     /* fail - try once again after parent process exit */
     if( !icon_name )
@@ -1559,9 +1557,9 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
     }
     /* extract the icon, second try */
     if( szIconPath[0] )
-        icon_name = extract_icon( szIconPath , iIconId, NULL, bWait, FALSE );
+        extract_icon( szIconPath , iIconId, NULL, bWait, &icon_name );
     else
-        icon_name = extract_icon( szPath, iIconId, NULL, bWait, FALSE );
+        extract_icon( szPath, iIconId, NULL, bWait, &icon_name );
 
 
     ReleaseSemaphore( hsem, 1, NULL );
@@ -1665,7 +1663,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
             {
                 if (pv[0].vt == VT_LPWSTR && pv[0].u.pwszVal)
                 {
-                    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, TRUE );
+                    extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
 
                     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
                 }
@@ -1708,7 +1706,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
     else
         r = platform_build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
 
-    icon_name = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, FALSE );
+    extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
 
     ret = (r != 0);

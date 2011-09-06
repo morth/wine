@@ -30,9 +30,8 @@ HRESULT convert_to_native_icon(IStream *icoFile, int *indeces, int numIndeces,
                                       const CLSID *outputFormat, const char *outputFileName, LPCWSTR commentW);
 
 HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier,
-                                   BOOL test_only);
-char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, BOOL before_link);
+                                   const char *destFilename, char **nativeIdentifier);
+void extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, char **nativeIdentifier);
 
 LPSTR escape(LPCWSTR arg);
 WCHAR* utf8_chars_to_wchars(LPCSTR string);

@@ -228,8 +228,7 @@ static void refresh_icon_cache(const char *iconsDir)
 }
 
 HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier,
-                                   BOOL before_link)
+                                   const char *destFilename, char **nativeIdentifier)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -241,7 +240,7 @@ HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     HRESULT hr = S_OK;
     LARGE_INTEGER zero;
 
-    if (!before_link)
+    if (*nativeIdentifier)
     {
         /* Did all work in the first call. */
         return hr;
@@ -1136,9 +1135,7 @@ static BOOL generate_associations(const char *xdg_data_home, const char *package
                                 *comma = 0;
                                 index = atoiW(comma + 1);
                             }
-			    /* XXX silly to call twice */
-                            iconA = extract_icon(iconW, index, flattened_mime, FALSE, TRUE);
-                            iconA = extract_icon(iconW, index, flattened_mime, FALSE, FALSE);
+                            extract_icon(iconW, index, flattened_mime, FALSE, &iconA);
                             HeapFree(GetProcessHeap(), 0, flattened_mime);
                         }
                     }
@@ -1160,11 +1157,7 @@ static BOOL generate_associations(const char *xdg_data_home, const char *package
 
             executableW = assoc_query(ASSOCSTR_EXECUTABLE, extensionW, openW);
             if (executableW)
-	    {
-                /* XXX silly to call twice */
-                openWithIconA = extract_icon(executableW, 0, NULL, FALSE, TRUE);
-                openWithIconA = extract_icon(executableW, 0, NULL, FALSE, FALSE);
-            }
+                extract_icon(executableW, 0, NULL, FALSE, &openWithIconA);
 
             friendlyAppNameW = assoc_query(ASSOCSTR_FRIENDLYAPPNAME, extensionW, openW);
             if (friendlyAppNameW)

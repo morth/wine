@@ -97,9 +97,8 @@ static inline int size_to_slot(int size)
 
 BOOL modify_plist_value(char *plist_path, const char *key, char *value);
 
-HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier,
-                                   BOOL before_link)
+HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+                                   const char *destFilename, char *icnsName)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -109,11 +108,7 @@ HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     } best[ICNS_SLOTS];
     int indexes[ICNS_SLOTS];
     int i;
-    GUID guid;
-    WCHAR *guidStrW = NULL;
-    char *guidStrA = NULL;
     char *icnsPath = NULL;
-    char *icnsName = NULL;
     char *bundle_path = NULL;
     char *plist_path = NULL;
     const char *iconKey = "CFBundleIconFile";
@@ -157,6 +152,53 @@ HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         }
     }
 
+    bundle_path = heap_printf("%s/Contents/Resources", path_to_bundle);
+    WINE_TRACE("icns files should go in %s (full path)\n", wine_dbgstr_a(bundle_path));
+
+    icnsPath = heap_printf("%s/%s", bundle_path, icnsName);
+
+    if (icnsPath == NULL)
+    {
+        hr = E_OUTOFMEMORY;
+        WINE_WARN("out of memory creating ICNS path\n");
+        goto end;
+    }
+
+    zero.QuadPart = 0;
+    hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
+    if (FAILED(hr))
+    {
+        WINE_WARN("seeking icon stream failed, error 0x%08X\n", hr);
+        goto end;
+    }
+    hr = convert_to_native_icon(icoStream, indexes, numEntries, &CLSID_WICIcnsEncoder,
+            icnsPath, icoPathW);
+    if (FAILED(hr))
+    {
+        WINE_WARN("converting %s to %s failed, error 0x%08X\n",
+                wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsPath), hr);
+        goto end;
+    }
+
+    plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
+    WINE_TRACE("attempting to modify %s (full path)\n", wine_dbgstr_a(plist_path));
+    ret = modify_plist_value(plist_path, iconKey, icnsName);
+
+end:
+    HeapFree(GetProcessHeap(), 0, iconDirEntries);
+    return hr;
+}
+
+static HRESULT CreateIconIdentifier(char **nativeIdentifier)
+{
+    /* XXX a GUID is not really needed anymore. That was for when the icon went into /tmp.
+     * Could use eg. executable name instead */
+    HRESULT hr;
+    GUID guid;
+    WCHAR *guidStrW = NULL;
+    char *guidStrA = NULL;
+    char *icnsName = NULL;
+
     hr = CoCreateGuid(&guid);
     if (FAILED(hr))
     {
@@ -177,58 +219,33 @@ HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         goto end;
     }
 
-    WINE_FIXME("--------icns files should go in %s/Contents/Resources---------\n", wine_dbgstr_a(path_to_bundle));
-
-    bundle_path = heap_printf("%s/Contents/Resources", path_to_bundle);
-    WINE_FIXME("--------icns files should go in %s- (full path)------\n", wine_dbgstr_a(bundle_path));
-
-    //   icnsName = heap_printf("%s.icns", guidStrA);
-    icnsPath = heap_printf("%s/%s.icns", bundle_path, guidStrA);
-
-    if (icnsPath == NULL)
+    icnsName = heap_printf("%s.icns", guidStrA);
+    if (icnsName == NULL)
     {
         hr = E_OUTOFMEMORY;
         WINE_WARN("out of memory creating ICNS path\n");
         goto end;
     }
 
-    if (!before_link)
-    {
-        zero.QuadPart = 0;
-        hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
-        if (FAILED(hr))
-        {
-            WINE_WARN("seeking icon stream failed, error 0x%08X\n", hr);
-            goto end;
-        }
-        hr = convert_to_native_icon(icoStream, indexes, numEntries, &CLSID_WICIcnsEncoder,
-                icnsPath, icoPathW);
-        if (FAILED(hr))
-        {
-            WINE_WARN("converting %s to %s failed, error 0x%08X\n",
-                    wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsPath), hr);
-            goto end;
-        }
-
-        plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
-        WINE_FIXME("--------attempting to modify %s- (full path)------\n", wine_dbgstr_a(plist_path));
-        icnsName = heap_printf("%s.icns", guidStrA);
-        ret = modify_plist_value(plist_path, iconKey, icnsName);
-    }
 
 end:
-    HeapFree(GetProcessHeap(), 0, iconDirEntries);
     CoTaskMemFree(guidStrW);
     HeapFree(GetProcessHeap(), 0, guidStrA);
     if (SUCCEEDED(hr))
-        *nativeIdentifier = icnsPath;
+        *nativeIdentifier = icnsName;
     else
-        HeapFree(GetProcessHeap(), 0, icnsPath);
+        HeapFree(GetProcessHeap(), 0, icnsName);
     return hr;
-}
-//CFPropertyListRef CreateMyPropertyListFromFile(CFURLRef fileURL);
-void WriteMyPropertyListToFile(CFPropertyListRef propertyList, CFURLRef fileURL );
 
+}
+
+HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+                                   const char *destFilename, char **nativeIdentifier)
+{
+    if (*nativeIdentifier)
+        return WriteBundleIcon(icoStream, exeIndex, icoPathW, destFilename, *nativeIdentifier);
+    return CreateIconIdentifier(nativeIdentifier);
+}
 
 CFDictionaryRef CreateMyDictionary(const char *linkname)
 {
