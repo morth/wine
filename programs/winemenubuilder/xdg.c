@@ -1,5 +1,4 @@
 
-#ifndef __APPLE__
 #include "config.h"
 #include "wine/port.h"
 
@@ -28,7 +27,6 @@
 #include <tlhelp32.h>
 #include <intshcut.h>
 #include <shlwapi.h>
-#include <initguid.h>
 #include <wincodec.h>
 
 #include "wine/unicode.h"
@@ -227,7 +225,7 @@ static void refresh_icon_cache(const char *iconsDir)
     }
 }
 
-HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+HRESULT xdg_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
                                    const char *destFilename, char **nativeIdentifier)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
@@ -1321,7 +1319,7 @@ static BOOL cleanup_associations(void)
     return hasChanged;
 }
 
-void platform_refresh_file_type_associations(void)
+void xdg_refresh_file_type_associations(void)
 {
     HANDLE hSem = NULL;
     char *mime_dir = NULL;
@@ -1389,7 +1387,7 @@ end:
     HeapFree(GetProcessHeap(), 0, applications_dir);
 }
 
-int platform_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+int xdg_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
                                 const char *args, const char *descr, const char *workdir, const char *icon)
 {
     char *location;
@@ -1406,14 +1404,14 @@ int platform_build_desktop_link(const char *unix_link, const char *link, const c
     return r;
 }
 
-int platform_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+int xdg_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
                              const char *args, const char *descr, const char *workdir, const char *icon)
 {
     return !write_menu_entry(unix_link, link, link_name, path, args, descr, workdir, icon);
 }
 
 
-BOOL platform_init(void)
+BOOL xdg_init(void)
 {
     WCHAR shellDesktopPath[MAX_PATH];
     HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT, shellDesktopPath);
@@ -1453,5 +1451,16 @@ BOOL platform_init(void)
     WINE_ERR("out of memory\n");
     return FALSE;
 }
-#endif
+
+const struct winemenubuilder_dispatch xdg_dispatch =
+{
+	xdg_init,
+
+	xdg_build_desktop_link,
+	xdg_build_menu_link,
+
+	xdg_write_icon,
+
+	xdg_refresh_file_type_associations,
+};
 

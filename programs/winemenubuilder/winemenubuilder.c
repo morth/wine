@@ -160,6 +160,8 @@ typedef struct
         int   nIndex;
 } ENUMRESSTRUCT;
 
+const struct winemenubuilder_dispatch *wmb_dispatch;
+
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
 
 char* heap_printf(const char *format, ...)
@@ -932,7 +934,7 @@ void extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bW
         WINE_WARN("opening icon %s index %d failed, hr=0x%08X\n", wine_dbgstr_w(icoPathW), index, hr);
         goto end;
     }
-    hr = platform_write_icon(stream, index, icoPathW, destFilename, nativeIdentifier);
+    hr = wmb_dispatch->write_icon(stream, index, icoPathW, destFilename, nativeIdentifier);
     if (FAILED(hr))
         WINE_WARN("writing icon failed, error 0x%08X\n", hr);
 
@@ -1537,13 +1539,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             char *link_arg = escape_unix_link_arg(unix_link);
             if (link_arg)
             {
-                r = platform_build_desktop_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
+                r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
                 HeapFree(GetProcessHeap(), 0, link_arg);
             }
         }
         else
         {
-            r = platform_build_desktop_link(unix_link, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
+            r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
         }
     }
     else
@@ -1551,7 +1553,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         char *link_arg = escape_unix_link_arg(unix_link);
         if (link_arg)
         {
-            r = platform_build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
+            r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
         }
     }
@@ -1701,10 +1703,10 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
         ++lastEntry;
     if (in_desktop_dir(csidl))
     {
-        r = platform_build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
     }
     else
-        r = platform_build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
 
     extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
@@ -2092,7 +2094,41 @@ static WCHAR *next_token( LPWSTR *p )
 
 static void RefreshFileTypeAssociations(void)
 {
-    platform_refresh_file_type_associations();
+    wmb_dispatch->refresh_file_type_associations();
+}
+
+static BOOL dispatch_init(void)
+{
+    extern struct winemenubuilder_dispatch xdg_dispatch;
+#ifdef __APPLE__
+    extern struct winemenubuilder_dispatch appbundle_dispatch;
+#endif
+    const char *dispatch = getenv("WINEMENUBUILDER_DISPATCH");
+
+    if (dispatch)
+    {
+#ifdef __APPLE__
+        if (strcmp(dispatch, "appbundle") == 0)
+        {
+            wmb_dispatch = &appbundle_dispatch;
+            return TRUE;
+        }
+#endif
+        if (strcmp(dispatch, "xdg") == 0)
+        {
+            wmb_dispatch = &xdg_dispatch;
+            return TRUE;
+        }
+
+        WINE_WARN("Unknown WINEMENUBUILDER_DISPATCH \"%s\"", dispatch);
+    }
+
+#ifdef __APPLE__
+    wmb_dispatch = &appbundle_dispatch;
+#else
+    wmb_dispatch = &xdg_dispatch;
+#endif
+    return TRUE;
 }
 
 /***********************************************************************
@@ -2113,7 +2149,10 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
     HRESULT hr;
     int ret = 0;
 
-    if (!platform_init())
+    if (!dispatch_init())
+        return 1;
+
+    if (!wmb_dispatch->init())
         return 1;
 
     hr = CoInitialize(NULL);

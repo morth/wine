@@ -239,7 +239,7 @@ end:
 
 }
 
-HRESULT platform_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
                                    const char *destFilename, char **nativeIdentifier)
 {
     if (*nativeIdentifier)
@@ -520,26 +520,26 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
     return TRUE;
 }
 
-int platform_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, const char *icon)
 {
     /* XXX work_dir */
     return !build_app_bundle(unix_link, path, args, mac_desktop_dir, link_name, link_name);
 }
 
-int platform_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
+int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, const char *icon)
 {
     /* XXX work_dir */
     return !build_app_bundle(unix_link, path, args, wine_applications_dir, link, link_name);
 }
 
-void platform_refresh_file_type_associations(void)
+void appbundle_refresh_file_type_associations(void)
 {
     WINE_FIXME("FileType Associations are currently unsupported on this platform\n");
 }
 
-BOOL platform_init(void)
+BOOL appbundle_init(void)
 {
     WCHAR shellDesktopPath[MAX_PATH];
 
@@ -567,5 +567,17 @@ BOOL platform_init(void)
         return FALSE;
     }
 }
+
+const struct winemenubuilder_dispatch appbundle_dispatch =
+{
+	appbundle_init,
+
+	appbundle_build_desktop_link,
+	appbundle_build_menu_link,
+
+	appbundle_write_icon,
+
+	appbundle_refresh_file_type_associations,
+};
 
 #endif
