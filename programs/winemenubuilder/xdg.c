@@ -1454,13 +1454,13 @@ BOOL xdg_init(void)
 
 const struct winemenubuilder_dispatch xdg_dispatch =
 {
-	xdg_init,
+    xdg_init,
 
-	xdg_build_desktop_link,
-	xdg_build_menu_link,
+    xdg_build_desktop_link,
+    xdg_build_menu_link,
 
-	xdg_write_icon,
+    xdg_write_icon,
 
-	xdg_refresh_file_type_associations,
+    xdg_refresh_file_type_associations,
 };
 

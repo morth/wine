@@ -132,7 +132,7 @@ static inline int size_to_slot(int size)
 BOOL modify_plist_value(char *plist_path, const char *key, char *value);
 
 HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char *icnsName)
+        const char *destFilename, char *icnsName)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -286,7 +286,7 @@ end:
 }
 
 HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier)
+        const char *destFilename, char **nativeIdentifier)
 {
     if (*nativeIdentifier)
         return WriteBundleIcon(icoStream, exeIndex, icoPathW, destFilename, *nativeIdentifier);
@@ -504,7 +504,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
     fprintf(file, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n\n", wine_get_config_dir());
 
     if (workdir)
-    	fprintf(file, "cd \"%s\"\n", workdir);
+        fprintf(file, "cd \"%s\"\n", workdir);
     fprintf(file, "exec sh -c \"exec wine %s %s\"\n\n", path, args);
 
     fprintf(file, "#EOF\n");
@@ -616,14 +616,14 @@ BOOL appbundle_init(void)
 
 const struct winemenubuilder_dispatch appbundle_dispatch =
 {
-	appbundle_init,
+    appbundle_init,
 
-	appbundle_build_desktop_link,
-	appbundle_build_menu_link,
+    appbundle_build_desktop_link,
+    appbundle_build_menu_link,
 
-	appbundle_write_icon,
+    appbundle_write_icon,
 
-	appbundle_refresh_file_type_associations,
+    appbundle_refresh_file_type_associations,
 };
 
 #endif
