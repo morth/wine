@@ -480,7 +480,7 @@ static BOOL generate_pkginfo_file(const char* path_to_bundle_contents)
 
 /* inspired by write_desktop_entry() in xdg support code */
 static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char *path,
-        const char *args, const char *linkname)
+        const char *args, const char *workdir, const char *linkname)
 {
     FILE *file;
     char *bundle_and_script;
@@ -503,6 +503,8 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
         fprintf(file, "DYLD_FALLBACK_LIBRARY_PATH=\"%s\"\nexport DYLD_FALLBACK_LIBRARY_PATH\n", libpath);
     fprintf(file, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n\n", wine_get_config_dir());
 
+    if (workdir)
+    	fprintf(file, "cd \"%s\"\n", workdir);
     fprintf(file, "exec sh -c \"exec wine %s %s\"\n\n", path, args);
 
     fprintf(file, "#EOF\n");
@@ -514,7 +516,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *dir, const char *link, const char *linkname)
+BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *workdir, const char *dir, const char *link, const char *linkname)
 {
     BOOL ret = FALSE;
     char *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
@@ -542,7 +544,7 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 
     WINE_TRACE("created bundle %s\n", wine_dbgstr_a(path_to_bundle));
 
-    ret = generate_bundle_script(path_to_bundle_macos, path, args, linkname);
+    ret = generate_bundle_script(path_to_bundle_macos, path, args, workdir, linkname);
     if(ret==FALSE)
         return ret;
 
@@ -569,15 +571,13 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, const char *icon)
 {
-    /* XXX work_dir */
-    return !build_app_bundle(unix_link, path, args, mac_desktop_dir, link_name, link_name);
+    return !build_app_bundle(unix_link, path, args, workdir, mac_desktop_dir, link_name, link_name);
 }
 
 int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, const char *icon)
 {
-    /* XXX work_dir */
-    return !build_app_bundle(unix_link, path, args, wine_applications_dir, link, link_name);
+    return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name);
 }
 
 void appbundle_refresh_file_type_associations(void)
