@@ -49,6 +49,42 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <CoreFoundation/CoreFoundation.h>
+#ifdef HAVE_APPLICATIONSERVICES_APPLICATIONSERVICES_H
+#define GetCurrentProcess GetCurrentProcess_Mac
+#define GetCurrentThread GetCurrentThread_Mac
+#define LoadResource LoadResource_Mac
+#define EqualRect EqualRect_Mac
+#define FillRect FillRect_Mac
+#define FrameRect FrameRect_Mac
+#define GetCursor GetCursor_Mac
+#define InvertRect InvertRect_Mac
+#define OffsetRect OffsetRect_Mac
+#define PtInRect PtInRect_Mac
+#define SetCursor SetCursor_Mac
+#define SetRect SetRect_Mac
+#define ShowCursor ShowCursor_Mac
+#define UnionRect UnionRect_Mac
+#define Polygon Polygon_Mac
+#include <ApplicationServices/ApplicationServices.h>
+#undef GetCurrentProcess
+#undef GetCurrentThread
+#undef LoadResource
+#undef EqualRect
+#undef FillRect
+#undef FrameRect
+#undef GetCursor
+#undef InvertRect
+#undef OffsetRect
+#undef PtInRect
+#undef SetCursor
+#undef SetRect
+#undef ShowCursor
+#undef UnionRect
+#undef Polygon
+#undef DPRINTF
+#endif
+
 #define COBJMACROS
 #define NONAMELESSUNION
 
@@ -61,8 +97,6 @@
 #include <intshcut.h>
 #include <shlwapi.h>
 #include <initguid.h>
-
-# include <CoreFoundation/CoreFoundation.h>
 
 #include "wine/debug.h"
 #include "wine/library.h"
@@ -183,6 +217,18 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
     WINE_TRACE("attempting to modify %s (full path)\n", wine_dbgstr_a(plist_path));
     ret = modify_plist_value(plist_path, iconKey, icnsName);
+
+    if (ret)
+    {
+        CFStringRef pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
+        CFURLRef bundleURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+                pathstr,
+                kCFURLPOSIXPathStyle,
+                false );
+        LSRegisterURL(bundleURL, true);
+        CFRelease(bundleURL);
+        CFRelease(pathstr);
+    }
 
 end:
     HeapFree(GetProcessHeap(), 0, iconDirEntries);
