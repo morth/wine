@@ -46,10 +46,13 @@ Options:\n\
 /affinity mask Start the program with the specified affinity mask.\n\
 /wait        Wait for the started program to finish, then exit with its exit code.\n\
 /unix        Use a Unix filename and start the file like windows explorer.\n\
+/AppleEvent  Wait for an apple event to receive the filename. No filename should be given.\n\
 /ProgIDOpen  Open a document using the specified progID.\n\
 /?           Display this help and exit.\n"
 
 STRING_EXECFAIL, "Application could not be started, or no application associated with the specified file.\nShellExecuteEx failed"
 
 STRING_UNIXFAIL "Could not translate the specified Unix filename to a DOS filename."
+
+STRING_APPLEEVENTFAIL "Did not receive an appropriate AppleEvent.\n"
 }

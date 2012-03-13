@@ -396,6 +396,7 @@ AC_SYS_LARGEFILE()
 AC_CHECK_HEADERS(\
 	AL/al.h \
 	ApplicationServices/ApplicationServices.h \
+	CoreServices/CoreServices.h \
 	AudioToolbox/AudioConverter.h \
 	AudioUnit/AudioUnit.h \
 	AudioUnit/AudioComponent.h \

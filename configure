@@ -5795,6 +5795,7 @@ done
 for ac_header in \
 	AL/al.h \
 	ApplicationServices/ApplicationServices.h \
+	CoreServices/CoreServices.h \
 	AudioToolbox/AudioConverter.h \
 	AudioUnit/AudioUnit.h \
 	AudioUnit/AudioComponent.h \
