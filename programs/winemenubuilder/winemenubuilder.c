@@ -160,9 +160,24 @@ typedef struct
         int   nIndex;
 } ENUMRESSTRUCT;
 
+struct rb_string_entry
+{
+    char *string;
+    struct wine_rb_entry entry;
+};
+
 const struct winemenubuilder_dispatch *wmb_dispatch;
 
 static HRESULT open_icon(LPCWSTR filename, int index, BOOL bWait, IStream **ppStream);
+
+static char *strdupA( const char *str )
+{
+    char *ret;
+
+    if (!str) return NULL;
+    if ((ret = HeapAlloc( GetProcessHeap(), 0, strlen(str) + 1 ))) strcpy( ret, str );
+    return ret;
+}
 
 char* heap_printf(const char *format, ...)
 {
@@ -193,6 +208,43 @@ char* heap_printf(const char *format, ...)
     if (!ret) ret = buffer;
     return ret;
 }
+
+static int winemenubuilder_rb_string_compare(const void *key, const struct wine_rb_entry *entry)
+{
+    const struct rb_string_entry *t = WINE_RB_ENTRY_VALUE(entry, const struct rb_string_entry, entry);
+
+    return strcmp((char*)key, t->string);
+}
+
+static void *winemenubuilder_rb_alloc(size_t size)
+{
+    return HeapAlloc(GetProcessHeap(), 0, size);
+}
+
+static void *winemenubuilder_rb_realloc(void *ptr, size_t size)
+{
+    return HeapReAlloc(GetProcessHeap(), 0, ptr, size);
+}
+
+static void winemenubuilder_rb_free(void *ptr)
+{
+    HeapFree(GetProcessHeap(), 0, ptr);
+}
+
+static void winemenubuilder_rb_destroy(struct wine_rb_entry *entry, void *context)
+{
+    struct rb_string_entry *t = WINE_RB_ENTRY_VALUE(entry, struct rb_string_entry, entry);
+    HeapFree(GetProcessHeap(), 0, t->string);
+    HeapFree(GetProcessHeap(), 0, t);
+}
+
+static const struct wine_rb_functions winemenubuilder_rb_functions =
+{
+    winemenubuilder_rb_alloc,
+    winemenubuilder_rb_realloc,
+    winemenubuilder_rb_free,
+    winemenubuilder_rb_string_compare,
+};
 
 BOOL create_directories(char *directory)
 {
@@ -1345,6 +1397,492 @@ WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra)
     return value;
 }
 
+static char *slashes_to_minuses(const char *string)
+{
+    int i;
+    char *ret = HeapAlloc(GetProcessHeap(), 0, lstrlenA(string) + 1);
+    if (ret)
+    {
+        for (i = 0; string[i]; i++)
+        {
+            if (string[i] == '/')
+                ret[i] = '-';
+            else
+                ret[i] = string[i];
+        }
+        ret[i] = 0;
+        return ret;
+    }
+    return NULL;
+}
+
+static WCHAR* reg_get_valW(HKEY key, LPCWSTR subkey, LPCWSTR name)
+{
+    DWORD size;
+    if (RegGetValueW(key, subkey, name, RRF_RT_REG_SZ, NULL, NULL, &size) == ERROR_SUCCESS)
+    {
+        WCHAR *ret = HeapAlloc(GetProcessHeap(), 0, size);
+        if (ret)
+        {
+            if (RegGetValueW(key, subkey, name, RRF_RT_REG_SZ, NULL, ret, &size) == ERROR_SUCCESS)
+                return ret;
+        }
+        HeapFree(GetProcessHeap(), 0, ret);
+    }
+    return NULL;
+}
+
+static CHAR* reg_get_val_utf8(HKEY key, LPCWSTR subkey, LPCWSTR name)
+{
+    WCHAR *valW = reg_get_valW(key, subkey, name);
+    if (valW)
+    {
+        char *val = wchars_to_utf8_chars(valW);
+        HeapFree(GetProcessHeap(), 0, valW);
+        return val;
+    }
+    return NULL;
+}
+
+static HKEY open_associations_reg_key(void)
+{
+    static const WCHAR Software_Wine_FileOpenAssociationsW[] = {
+        'S','o','f','t','w','a','r','e','\\','W','i','n','e','\\','F','i','l','e','O','p','e','n','A','s','s','o','c','i','a','t','i','o','n','s',0};
+    HKEY assocKey;
+    if (RegCreateKeyW(HKEY_CURRENT_USER, Software_Wine_FileOpenAssociationsW, &assocKey) == ERROR_SUCCESS)
+        return assocKey;
+    return NULL;
+}
+
+static BOOL has_association_changed(LPCWSTR extensionW, LPCSTR mimeType, LPCWSTR progId,
+    LPCSTR appName, LPCSTR openWithIcon)
+{
+    static const WCHAR ProgIDW[] = {'P','r','o','g','I','D',0};
+    static const WCHAR MimeTypeW[] = {'M','i','m','e','T','y','p','e',0};
+    static const WCHAR AppNameW[] = {'A','p','p','N','a','m','e',0};
+    static const WCHAR OpenWithIconW[] = {'O','p','e','n','W','i','t','h','I','c','o','n',0};
+    HKEY assocKey;
+    BOOL ret;
+
+    if ((assocKey = open_associations_reg_key()))
+    {
+        CHAR *valueA;
+        WCHAR *value;
+
+        ret = FALSE;
+
+        valueA = reg_get_val_utf8(assocKey, extensionW, MimeTypeW);
+        if (!valueA || lstrcmpA(valueA, mimeType))
+            ret = TRUE;
+        HeapFree(GetProcessHeap(), 0, valueA);
+
+        value = reg_get_valW(assocKey, extensionW, ProgIDW);
+        if (!value || strcmpW(value, progId))
+            ret = TRUE;
+        HeapFree(GetProcessHeap(), 0, value);
+
+        valueA = reg_get_val_utf8(assocKey, extensionW, AppNameW);
+        if (!valueA || lstrcmpA(valueA, appName))
+            ret = TRUE;
+        HeapFree(GetProcessHeap(), 0, valueA);
+
+        valueA = reg_get_val_utf8(assocKey, extensionW, OpenWithIconW);
+        if ((openWithIcon && !valueA) ||
+            (!openWithIcon && valueA) ||
+            (openWithIcon && valueA && lstrcmpA(valueA, openWithIcon)))
+            ret = TRUE;
+        HeapFree(GetProcessHeap(), 0, valueA);
+
+        RegCloseKey(assocKey);
+    }
+    else
+    {
+        WINE_ERR("error opening associations registry key\n");
+        ret = FALSE;
+    }
+    return ret;
+}
+
+static void update_association(LPCWSTR extension, LPCSTR mimeType, LPCWSTR progId,
+    LPCSTR appName, LPCSTR openWithIcon)
+{
+    static const WCHAR ProgIDW[] = {'P','r','o','g','I','D',0};
+    static const WCHAR MimeTypeW[] = {'M','i','m','e','T','y','p','e',0};
+    static const WCHAR AppNameW[] = {'A','p','p','N','a','m','e',0};
+    static const WCHAR OpenWithIconW[] = {'O','p','e','n','W','i','t','h','I','c','o','n',0};
+    HKEY assocKey = NULL;
+    HKEY subkey = NULL;
+    WCHAR *mimeTypeW = NULL;
+    WCHAR *appNameW = NULL;
+    WCHAR *openWithIconW = NULL;
+
+    assocKey = open_associations_reg_key();
+    if (assocKey == NULL)
+    {
+        WINE_ERR("could not open file associations key\n");
+        goto done;
+    }
+
+    if (RegCreateKeyW(assocKey, extension, &subkey) != ERROR_SUCCESS)
+    {
+        WINE_ERR("could not create extension subkey\n");
+        goto done;
+    }
+
+    mimeTypeW = utf8_chars_to_wchars(mimeType);
+    if (mimeTypeW == NULL)
+    {
+        WINE_ERR("out of memory\n");
+        goto done;
+    }
+
+    appNameW = utf8_chars_to_wchars(appName);
+    if (appNameW == NULL)
+    {
+        WINE_ERR("out of memory\n");
+        goto done;
+    }
+
+    if (openWithIcon)
+    {
+        openWithIconW = utf8_chars_to_wchars(openWithIcon);
+        if (openWithIconW == NULL)
+        {
+            WINE_ERR("out of memory\n");
+            goto done;
+        }
+    }
+
+    RegSetValueExW(subkey, MimeTypeW, 0, REG_SZ, (const BYTE*) mimeTypeW, (lstrlenW(mimeTypeW) + 1) * sizeof(WCHAR));
+    RegSetValueExW(subkey, ProgIDW, 0, REG_SZ, (const BYTE*) progId, (lstrlenW(progId) + 1) * sizeof(WCHAR));
+    RegSetValueExW(subkey, AppNameW, 0, REG_SZ, (const BYTE*) appNameW, (lstrlenW(appNameW) + 1) * sizeof(WCHAR));
+    if (openWithIcon)
+        RegSetValueExW(subkey, OpenWithIconW, 0, REG_SZ, (const BYTE*) openWithIconW, (lstrlenW(openWithIconW) + 1) * sizeof(WCHAR));
+    else
+        RegDeleteValueW(subkey, OpenWithIconW);
+
+done:
+    RegCloseKey(assocKey);
+    RegCloseKey(subkey);
+    HeapFree(GetProcessHeap(), 0, mimeTypeW);
+    HeapFree(GetProcessHeap(), 0, appNameW);
+    HeapFree(GetProcessHeap(), 0, openWithIconW);
+}
+
+static BOOL cleanup_associations(void *user)
+{
+    static const WCHAR openW[] = {'o','p','e','n',0};
+    HKEY assocKey;
+    BOOL hasChanged = FALSE;
+    if ((assocKey = open_associations_reg_key()))
+    {
+        int i;
+        BOOL done = FALSE;
+        for (i = 0; !done;)
+        {
+            WCHAR *extensionW = NULL;
+            DWORD size = 1024;
+            LSTATUS ret;
+
+            do
+            {
+                HeapFree(GetProcessHeap(), 0, extensionW);
+                extensionW = HeapAlloc(GetProcessHeap(), 0, size * sizeof(WCHAR));
+                if (extensionW == NULL)
+                {
+                    WINE_ERR("out of memory\n");
+                    ret = ERROR_OUTOFMEMORY;
+                    break;
+                }
+                ret = RegEnumKeyExW(assocKey, i, extensionW, &size, NULL, NULL, NULL, NULL);
+                size *= 2;
+            } while (ret == ERROR_MORE_DATA);
+
+            if (ret == ERROR_SUCCESS)
+            {
+                WCHAR *command;
+                command = assoc_query(ASSOCSTR_COMMAND, extensionW, openW);
+                if (command == NULL)
+                {
+                    char *extensionA = wchars_to_utf8_chars(strlwrW(extensionW));
+                    if (extensionA)
+                    {
+                        wmb_dispatch->remove_file_type_association(user, extensionA, extensionW);
+                        RegDeleteKeyW(assocKey, extensionW);
+                        hasChanged = TRUE;
+
+                        HeapFree(GetProcessHeap(), 0, extensionA);
+                   }
+                   else
+                        WINE_ERR("out of memory\n");
+                }
+                else
+                    i++;
+                HeapFree(GetProcessHeap(), 0, command);
+            }
+            else
+            {
+                if (ret != ERROR_NO_MORE_ITEMS)
+                    WINE_ERR("error %d while reading registry\n", ret);
+                done = TRUE;
+            }
+            HeapFree(GetProcessHeap(), 0, extensionW);
+        }
+        RegCloseKey(assocKey);
+    }
+    else
+        WINE_ERR("could not open file associations key\n");
+    return hasChanged;
+}
+
+static BOOL is_extension_blacklisted(LPCWSTR extension)
+{
+    /* These are managed through external tools like wine.desktop, to evade malware created file type associations */
+    static const WCHAR comW[] = {'.','c','o','m',0};
+    static const WCHAR exeW[] = {'.','e','x','e',0};
+    static const WCHAR msiW[] = {'.','m','s','i',0};
+
+    if (!strcmpiW(extension, comW) ||
+        !strcmpiW(extension, exeW) ||
+        !strcmpiW(extension, msiW))
+        return TRUE;
+    return FALSE;
+}
+
+static const char* get_special_mime_type(LPCWSTR extension)
+{
+    static const WCHAR lnkW[] = {'.','l','n','k',0};
+    if (!strcmpiW(extension, lnkW))
+        return "application/x-ms-shortcut";
+    return NULL;
+}
+
+static BOOL generate_associations(void *user)
+{
+    static const WCHAR openW[] = {'o','p','e','n',0};
+    struct wine_rb_tree mimeProgidTree;
+    LSTATUS ret = 0;
+    int i;
+    BOOL hasChanged = FALSE;
+
+    if (wine_rb_init(&mimeProgidTree, &winemenubuilder_rb_functions))
+    {
+        WINE_ERR("wine_rb_init failed\n");
+        return FALSE;
+    }
+
+    for (i = 0; ; i++)
+    {
+        WCHAR *extensionW = NULL;
+        DWORD size = 1024;
+
+        do
+        {
+            HeapFree(GetProcessHeap(), 0, extensionW);
+            extensionW = HeapAlloc(GetProcessHeap(), 0, size * sizeof(WCHAR));
+            if (extensionW == NULL)
+            {
+                WINE_ERR("out of memory\n");
+                ret = ERROR_OUTOFMEMORY;
+                break;
+            }
+            ret = RegEnumKeyExW(HKEY_CLASSES_ROOT, i, extensionW, &size, NULL, NULL, NULL, NULL);
+            size *= 2;
+        } while (ret == ERROR_MORE_DATA);
+
+        if (ret == ERROR_SUCCESS && extensionW[0] == '.' && !is_extension_blacklisted(extensionW))
+        {
+            char *extensionA = NULL;
+            WCHAR *commandW = NULL;
+            WCHAR *executableW = NULL;
+            char *openWithIconA = NULL;
+            WCHAR *friendlyDocNameW = NULL;
+            char *friendlyDocNameA = NULL;
+            WCHAR *iconW = NULL;
+            char *iconA = NULL;
+            WCHAR *contentTypeW = NULL;
+            char *mimeTypeA = NULL;
+            WCHAR *friendlyAppNameW = NULL;
+            char *friendlyAppNameA = NULL;
+            WCHAR *progIdW = NULL;
+            char *progIdA = NULL;
+            char *mimeProgId = NULL;
+	    char *flattened_mime = NULL;
+	    int icon_index = 0;
+
+            extensionA = wchars_to_utf8_chars(strlwrW(extensionW));
+            if (extensionA == NULL)
+            {
+                WINE_ERR("out of memory\n");
+                goto end;
+            }
+
+            friendlyDocNameW = assoc_query(ASSOCSTR_FRIENDLYDOCNAME, extensionW, NULL);
+            if (friendlyDocNameW)
+            {
+                friendlyDocNameA = wchars_to_utf8_chars(friendlyDocNameW);
+                if (friendlyDocNameA == NULL)
+                {
+                    WINE_ERR("out of memory\n");
+                    goto end;
+                }
+            }
+
+            iconW = assoc_query(ASSOCSTR_DEFAULTICON, extensionW, NULL);
+
+            contentTypeW = assoc_query(ASSOCSTR_CONTENTTYPE, extensionW, NULL);
+            if (contentTypeW)
+                strlwrW(contentTypeW);
+
+            if (!wmb_dispatch->mime_type_for_extension(user, extensionA, extensionW, &mimeTypeA))
+                goto end;
+
+            if (mimeTypeA == NULL)
+            {
+                if (contentTypeW != NULL && strchrW(contentTypeW, '/'))
+                    mimeTypeA = wchars_to_utf8_chars(contentTypeW);
+                else if ((get_special_mime_type(extensionW)))
+                    mimeTypeA = strdupA(get_special_mime_type(extensionW));
+                else
+                    mimeTypeA = heap_printf("application/x-wine-extension-%s", &extensionA[1]);
+
+                if (mimeTypeA != NULL)
+                {
+                    /* GNOME seems to ignore the <icon> tag in MIME packages,
+                     * and the default name is more intuitive anyway.
+                     */
+                    if (iconW)
+                    {
+                        flattened_mime = slashes_to_minuses(mimeTypeA);
+                        if (flattened_mime)
+                        {
+                            WCHAR *comma = strrchrW(iconW, ',');
+                            if (comma)
+                            {
+                                *comma = 0;
+                                icon_index = atoiW(comma + 1);
+                            }
+                            extract_icon(iconW, icon_index, flattened_mime, FALSE, &iconA);
+                        }
+                    }
+
+                    wmb_dispatch->write_mime_type_entry(user, extensionA, mimeTypeA, friendlyDocNameA);
+                    hasChanged = TRUE;
+                }
+                else
+                {
+                    WINE_FIXME("out of memory\n");
+                    goto end;
+                }
+            }
+
+            commandW = assoc_query(ASSOCSTR_COMMAND, extensionW, openW);
+            if (commandW == NULL)
+                /* no command => no application is associated */
+                goto end;
+
+            executableW = assoc_query(ASSOCSTR_EXECUTABLE, extensionW, openW);
+            if (executableW)
+                extract_icon(executableW, 0, NULL, FALSE, &openWithIconA);
+
+            friendlyAppNameW = assoc_query(ASSOCSTR_FRIENDLYAPPNAME, extensionW, openW);
+            if (friendlyAppNameW)
+            {
+                friendlyAppNameA = wchars_to_utf8_chars(friendlyAppNameW);
+                if (friendlyAppNameA == NULL)
+                {
+                    WINE_ERR("out of memory\n");
+                    goto end;
+                }
+            }
+            else
+            {
+                friendlyAppNameA = heap_printf("A Wine application");
+                if (friendlyAppNameA == NULL)
+                {
+                    WINE_ERR("out of memory\n");
+                    goto end;
+                }
+            }
+
+            progIdW = reg_get_valW(HKEY_CLASSES_ROOT, extensionW, NULL);
+            if (progIdW)
+            {
+                progIdA = escape(progIdW);
+                if (progIdA == NULL)
+                {
+                    WINE_ERR("out of memory\n");
+                    goto end;
+                }
+            }
+            else
+                goto end; /* no progID => not a file type association */
+
+            /* Do not allow duplicate ProgIDs for a MIME type, it causes unnecessary duplication in Open dialogs */
+            mimeProgId = heap_printf("%s=>%s", mimeTypeA, progIdA);
+            if (mimeProgId)
+            {
+                struct rb_string_entry *entry;
+                if (wine_rb_get(&mimeProgidTree, mimeProgId))
+                {
+                    HeapFree(GetProcessHeap(), 0, mimeProgId);
+                    goto end;
+                }
+                entry = HeapAlloc(GetProcessHeap(), 0, sizeof(struct rb_string_entry));
+                if (!entry)
+                {
+                    WINE_ERR("out of memory allocating rb_string_entry\n");
+                    goto end;
+                }
+                entry->string = mimeProgId;
+                if (wine_rb_put(&mimeProgidTree, mimeProgId, &entry->entry))
+                {
+                    WINE_ERR("error updating rb tree\n");
+                    goto end;
+                }
+            }
+
+            if (has_association_changed(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA))
+            {
+                if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, openWithIconA, iconA))
+                {
+                    hasChanged = TRUE;
+                    update_association(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA);
+                }
+            }
+
+            /* Second icon pass after files are written. */
+            if (executableW)
+                extract_icon(executableW, 0, NULL, FALSE, &openWithIconA);
+	    if (flattened_mime)
+                extract_icon(iconW, icon_index, flattened_mime, FALSE, &iconA);
+
+        end:
+            HeapFree(GetProcessHeap(), 0, extensionA);
+            HeapFree(GetProcessHeap(), 0, commandW);
+            HeapFree(GetProcessHeap(), 0, executableW);
+            HeapFree(GetProcessHeap(), 0, openWithIconA);
+            HeapFree(GetProcessHeap(), 0, friendlyDocNameW);
+            HeapFree(GetProcessHeap(), 0, friendlyDocNameA);
+            HeapFree(GetProcessHeap(), 0, iconW);
+            HeapFree(GetProcessHeap(), 0, iconA);
+            HeapFree(GetProcessHeap(), 0, contentTypeW);
+            HeapFree(GetProcessHeap(), 0, mimeTypeA);
+            HeapFree(GetProcessHeap(), 0, friendlyAppNameW);
+            HeapFree(GetProcessHeap(), 0, friendlyAppNameA);
+            HeapFree(GetProcessHeap(), 0, progIdW);
+            HeapFree(GetProcessHeap(), 0, progIdA);
+	    HeapFree(GetProcessHeap(), 0, flattened_mime);
+        }
+        HeapFree(GetProcessHeap(), 0, extensionW);
+        if (ret != ERROR_SUCCESS)
+            break;
+    }
+
+    wine_rb_destroy(&mimeProgidTree, winemenubuilder_rb_destroy, NULL);
+    return hasChanged;
+}
+
 static char *get_start_exe_path(void)
  {
     static const WCHAR startW[] = {'\\','c','o','m','m','a','n','d',
@@ -1520,6 +2058,11 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
 
     /* building multiple menus concurrently has race conditions */
     hsem = CreateSemaphoreA( NULL, 1, 1, "winemenubuilder_semaphore");
+    if (!hsem)
+    {
+        WINE_ERR("failed to create semaphore\n");
+        goto cleanup;
+    }
     if( WAIT_OBJECT_0 != MsgWaitForMultipleObjects( 1, &hsem, FALSE, INFINITE, QS_ALLINPUT ) )
     {
         WINE_ERR("failed wait for semaphore\n");
@@ -1889,6 +2432,39 @@ static BOOL Process_URL( LPCWSTR urlname, BOOL bWait )
     return !r;
 }
 
+static void RefreshFileTypeAssociations(void)
+{
+    HANDLE hSem = NULL;
+    BOOL hasChanged;
+    void *user;
+
+    hSem = CreateSemaphoreA( NULL, 1, 1, "winemenubuilder_semaphore");
+    if( WAIT_OBJECT_0 != MsgWaitForMultipleObjects( 1, &hSem, FALSE, INFINITE, QS_ALLINPUT ) )
+    {
+        WINE_ERR("failed wait for semaphore\n");
+        CloseHandle(hSem);
+        hSem = NULL;
+        goto end;
+    }
+
+    user = wmb_dispatch->refresh_file_type_associations_init();
+
+    if (!user)
+        goto end;
+
+    hasChanged = generate_associations(user);
+    hasChanged |= cleanup_associations(user);
+
+    wmb_dispatch->refresh_file_type_associations_cleanup(user, hasChanged);
+
+end:
+    if (hSem)
+    {
+        ReleaseSemaphore(hSem, 1, NULL);
+        CloseHandle(hSem);
+    }
+}
+
 static void cleanup_menus(void)
 {
     HKEY hkey;
@@ -2092,10 +2668,6 @@ static WCHAR *next_token( LPWSTR *p )
     return token;
 }
 
-static void RefreshFileTypeAssociations(void)
-{
-    wmb_dispatch->refresh_file_type_associations();
-}
 
 static BOOL dispatch_init(void)
 {
@@ -2131,7 +2703,7 @@ static BOOL dispatch_init(void)
     return TRUE;
 }
 
-/***********************************************************************
+/************************************************************************
  *
  *           wWinMain
  */

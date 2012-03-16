@@ -32,12 +32,10 @@
  * is all we really need for now for Wine.
  *
  * TODO:
- * - Add support for writing bundles to the Desktop
  * - Convert to using CoreFoundation API rather than standard unix file ops
  * - See if there is anything else in the rsrc section of the target that
  *   we might want to dump in a *.plist. Version information for the target
  *   and or Wine Version information come to mind.
- * - Association Support
  * - sha1hash of target application in bundle plist
  */
 
@@ -109,10 +107,20 @@ WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 static char *path_to_bundle = NULL;
 static char *mac_desktop_dir = NULL;
 static char *wine_applications_dir = NULL;
+static char *wine_associations_dir = NULL;
 
 DEFINE_GUID(CLSID_WICIcnsEncoder, 0x312fb6f1,0xb767,0x409d,0x8a,0x6d,0x0f,0xc1,0x54,0xd4,0xf0,0x5c);
 
 #define ICNS_SLOTS 6
+
+static char *strdupA( const char *str )
+{
+    char *ret;
+
+    if (!str) return NULL;
+    if ((ret = HeapAlloc( GetProcessHeap(), 0, strlen(str) + 1 ))) strcpy( ret, str );
+    return ret;
+}
 
 static inline int size_to_slot(int size)
 {
@@ -149,6 +157,12 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     LARGE_INTEGER zero;
     HRESULT hr;
     BOOL ret = FALSE;
+
+    if (!path_to_bundle)
+    {
+        hr = E_FAIL;
+        goto end;
+    }
 
     hr = read_ico_direntries(icoStream, &iconDirEntries, &numEntries);
     if (FAILED(hr))
@@ -214,13 +228,15 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         goto end;
     }
 
-    plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
-    WINE_TRACE("attempting to modify %s (full path)\n", wine_dbgstr_a(plist_path));
-    ret = modify_plist_value(plist_path, iconKey, icnsName);
+    if (iconKey) {
+        plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
+        WINE_TRACE("attempting to modify %s (full path)\n", wine_dbgstr_a(plist_path));
+        ret = modify_plist_value(plist_path, iconKey, icnsName);
+    }
 
     if (ret)
     {
-        CFStringRef pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
+        CFStringRef pathstr = CFStringCreateWithCString(NULL, path_to_bundle, CFStringGetSystemEncoding());
         CFURLRef bundleURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
                 pathstr,
                 kCFURLPOSIXPathStyle,
@@ -363,7 +379,7 @@ static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
     /* Reconstitute the dictionary using the XML data. */
     propertyList = CFPropertyListCreateFromXMLData( kCFAllocatorDefault,
             resourceData,
-            kCFPropertyListImmutable,
+            kCFPropertyListMutableContainers,
             &errorString);
 
     //CFRelease( resourceData );
@@ -373,7 +389,6 @@ static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
 BOOL modify_plist_value(char *plist_path, const char *key, char *value)
 {
     CFPropertyListRef propertyList;
-    CFMutableDictionaryRef dict;
     CFStringRef pathstr;
     CFStringRef keystr;
     CFStringRef valuestr;
@@ -396,15 +411,12 @@ BOOL modify_plist_value(char *plist_path, const char *key, char *value)
     /* Open File */
     propertyList = CreateMyPropertyListFromFile( fileURL );
 
-    /* Create a dictionary that will hold the data. */
-    dict = CFDictionaryCreateMutableCopy( kCFAllocatorDefault, 0, propertyList );
-
     /* Modify a value */
-    CFDictionaryAddValue( dict, keystr, valuestr );
+    CFDictionaryAddValue( (CFMutableDictionaryRef)propertyList, keystr, valuestr );
     //CFDictionarySetValue( propertyList, value_to_change, variable_to_write );
 
     /* Write back to the file */
-    WriteMyPropertyListToFile( dict, fileURL );
+    WriteMyPropertyListToFile( propertyList, fileURL );
 
     //CFRelease(propertyList);
     // CFRelease(fileURL);
@@ -580,9 +592,232 @@ int appbundle_build_menu_link(const char *unix_link, const char *link, const cha
     return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name);
 }
 
-void appbundle_refresh_file_type_associations(void)
+void *appbundle_refresh_file_type_associations_init(void)
 {
-    WINE_FIXME("FileType Associations are currently unsupported on this platform\n");
+    static int ok;
+
+    /* Noop */
+    return &ok;
+}
+
+static CFStringRef find_uti_for_tag(CFStringRef tagClass, const char *tag)
+{
+    CFStringRef uti = NULL;
+    CFStringRef tagStr = CFStringCreateWithCStringNoCopy(NULL, tag, kCFStringEncodingUTF8, kCFAllocatorNull);
+
+    if (tagStr)
+        uti = UTTypeCreatePreferredIdentifierForTag(tagClass, tagStr, NULL);
+    if (uti && CFStringCompareWithOptions(uti, CFSTR("dyn."), CFRangeMake(0, 4), 0) == kCFCompareEqualTo)
+    {
+        CFRelease(uti);
+        uti = NULL;
+    }
+
+    if (tagStr)
+        CFRelease(tagStr);
+    return uti;
+}
+
+static CFMutableDictionaryRef exported_uti_dictionary(CFStringRef uti, const char *description, const char *icon,
+        const char *extension, const char *mime_type)
+{
+    CFStringRef descStr = description ? CFStringCreateWithCString(NULL, description, kCFStringEncodingUTF8) : NULL;
+    CFStringRef iconStr = icon ? CFStringCreateWithCString(NULL, icon, kCFStringEncodingUTF8) : NULL;
+    CFStringRef extStr = CFStringCreateWithCString(NULL, extension, kCFStringEncodingUTF8);
+    CFStringRef mimeStr = CFStringCreateWithCString(NULL, mime_type, kCFStringEncodingUTF8);
+    CFDictionaryRef utidict = UTTypeCopyDeclaration(uti);
+    CFMutableDictionaryRef res;
+    CFDictionaryRef tagdict;
+
+    if (utidict)
+    {
+        res = CFDictionaryCreateMutableCopy(NULL, 5, utidict);
+        CFRelease(utidict);
+        CFDictionaryRemoveValue(res, kUTTypeReferenceURLKey);
+    }
+    else
+    {
+        CFArrayRef conformsTo;
+
+        /* Have to create from scratch. */
+        res = CFDictionaryCreateMutable(NULL, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+        CFDictionarySetValue(res, kUTTypeIdentifierKey, uti);
+
+        if (strncmp(mime_type, "image/", 6) == 0)
+            conformsTo = CFArrayCreate(NULL, (const void *[]){ CFSTR("public.image"), CFSTR("public.item") }, 2, &kCFTypeArrayCallBacks);
+        else if (strncmp(mime_type, "text/", 5) == 0)
+            conformsTo = CFArrayCreate(NULL, (const void *[]){ CFSTR("public.text"), CFSTR("public.item") }, 2, &kCFTypeArrayCallBacks);
+        else
+            conformsTo = CFArrayCreate(NULL, (const void *[]){ CFSTR("public.data"), CFSTR("public.item") }, 2, &kCFTypeArrayCallBacks);
+        CFDictionarySetValue(res, kUTTypeConformsToKey, conformsTo);
+        CFRelease(conformsTo);
+    }
+
+    if (description)
+    	CFDictionarySetValue(res, kUTTypeDescriptionKey, descStr);
+    else
+        CFDictionaryRemoveValue(res, kUTTypeDescriptionKey);
+    if (icon)
+        CFDictionarySetValue(res, kUTTypeIconFileKey, iconStr);
+    else
+        CFDictionaryRemoveValue(res, kUTTypeIconFileKey);
+    
+    tagdict = CFDictionaryCreate(NULL, (const void *[]){ CFSTR("public.filename-extension"), CFSTR("public.mime-type") },
+            (const void *[]){ extStr, mimeStr }, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(res, kUTTypeTagSpecificationKey, tagdict);
+    CFRelease(tagdict);
+
+    if (descStr)
+    	CFRelease(descStr);
+    if (iconStr)
+        CFRelease(iconStr);
+    CFRelease(extStr);
+    CFRelease(mimeStr);
+
+    return res;
+}
+
+BOOL replace_exported_uti(CFPropertyListRef propertyList, CFStringRef uti, CFDictionaryRef dict)
+{
+    CFMutableArrayRef utis = (CFMutableArrayRef)CFDictionaryGetValue(propertyList, kUTExportedTypeDeclarationsKey);
+    CFIndex count;
+    CFIndex i;
+
+    if (utis)
+        count = CFArrayGetCount(utis);
+    else
+    {
+        utis = CFArrayCreateMutable(NULL, 1, &kCFTypeArrayCallBacks);
+        count = 0;
+        CFDictionarySetValue((CFMutableDictionaryRef)propertyList, kUTExportedTypeDeclarationsKey, utis);
+    }
+
+    for ( i = 0 ; i < count ; i++)
+    {
+        CFDictionaryRef d = CFArrayGetValueAtIndex(utis, i);
+        CFStringRef itemUti = CFDictionaryGetValue(d, kUTTypeIdentifierKey);
+
+        if (CFEqual(uti, itemUti))
+            break;
+    }
+
+    if (i < count)
+    {
+        if (dict)
+            CFArrayReplaceValues(utis, CFRangeMake(i, 1), (const void*[]){ dict }, 1);
+        else
+            CFArrayRemoveValueAtIndex(utis, i);
+    }
+    else if (dict)
+        CFArrayAppendValue(utis, dict);
+    return TRUE;
+}
+
+BOOL appbundle_mime_type_for_extension(void *user, const char *extensionA, LPCWSTR extensionW, char **mime_type)
+{
+    CFStringRef uti = NULL;
+    CFStringRef mime = NULL;
+    BOOL ret = TRUE;
+
+    uti = find_uti_for_tag(kUTTagClassFilenameExtension, &extensionA[1]);
+    if (uti)
+        mime = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType);
+
+    if (mime) {
+        char buf[1024];
+
+        if (CFStringGetCString(mime, buf, sizeof(buf), kCFStringEncodingUTF8)) {
+            *mime_type = strdupA(buf);
+        }
+    }
+
+    if (uti)
+        CFRelease(uti);
+    if (mime)
+        CFRelease(mime);
+    return ret;
+}
+
+BOOL appbundle_write_mime_type_entry(void *user, const char *extensionA, const char *mimeTypeA, const char *friendlyDocNameA)
+{
+    /* Noop */
+    return TRUE;
+}
+
+BOOL appbundle_write_association_entry(void *user, const char *extensionA, const char *friendlyAppNameA,
+		const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
+                const char *appIconA, const char *docIconA)
+{
+    char *bundle_name = heap_printf("%s.app", friendlyAppNameA);
+    char *plist_path = heap_printf("%s/%s/Contents/Info.plist", wine_associations_dir, bundle_name);
+    struct stat st;
+    CFURLRef fileURL;
+    CFMutableDictionaryRef dict;
+    CFStringRef pathstr;
+    CFPropertyListRef propertyList;
+    CFStringRef uti;
+    char utibuf[256];
+
+    WINE_TRACE("enter extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, appIconA, docIconA);
+
+    if (stat(plist_path, &st))
+    {
+        build_app_bundle(NULL, "start", "/AppleEvent", NULL, wine_associations_dir, friendlyAppNameA, friendlyAppNameA);
+        WINE_TRACE("new bundle %s\n", path_to_bundle);
+    }
+    else
+    {
+        path_to_bundle = heap_printf("%s/%s", wine_associations_dir, bundle_name);
+        WINE_TRACE("existing bundle %s\n", path_to_bundle);
+    }
+
+    pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
+    /* Create a URL that specifies the file we will create to hold the XML data. */
+    fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+            pathstr,
+            kCFURLPOSIXPathStyle,
+            false );
+
+    /* Open File */
+    propertyList = CreateMyPropertyListFromFile( fileURL );
+
+    uti = find_uti_for_tag(kUTTagClassMIMEType, mimeTypeA);
+    if (!uti)
+        uti = find_uti_for_tag(kUTTagClassFilenameExtension, &extensionA[1]);
+    if (!uti)
+        uti = CFStringCreateWithFormat(NULL, NULL, CFSTR("org.winehq.extension%s"), extensionA);
+    CFStringGetCString(uti, utibuf, sizeof(utibuf), kCFStringEncodingUTF8);
+    WINE_TRACE("uti = %s\n", utibuf);
+    dict = exported_uti_dictionary(uti, friendlyDocNameA, docIconA, &extensionA[1], mimeTypeA);
+
+    replace_exported_uti(propertyList, uti, dict);
+
+    WriteMyPropertyListToFile( propertyList, fileURL );
+
+    {
+        CFStringRef pathstr = CFStringCreateWithCString(NULL, path_to_bundle, CFStringGetSystemEncoding());
+        CFURLRef bundleURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+                pathstr,
+                kCFURLPOSIXPathStyle,
+                false );
+        LSRegisterURL(bundleURL, true);
+        CFRelease(bundleURL);
+        CFRelease(pathstr);
+    }
+
+    WINE_TRACE("exit extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, appIconA, docIconA);
+
+    return TRUE;
+}
+
+BOOL appbundle_remove_file_type_association(void *user, const char *extensionA, LPCWSTR extensionW)
+{
+    return TRUE;
+}
+
+void appbundle_refresh_file_type_associations_cleanup(void *user, BOOL hasChanged)
+{
 }
 
 BOOL appbundle_init(void)
@@ -605,6 +840,10 @@ BOOL appbundle_init(void)
         create_directories(wine_applications_dir);
         WINE_TRACE("%s\n", wine_applications_dir);
 
+        wine_associations_dir = heap_printf("%s/Applications/Wine/Associations", getenv("HOME"));
+        create_directories(wine_associations_dir);
+        WINE_TRACE("%s\n", wine_associations_dir);
+
         return TRUE;
     }
     else
@@ -623,7 +862,12 @@ const struct winemenubuilder_dispatch appbundle_dispatch =
 
     appbundle_write_icon,
 
-    appbundle_refresh_file_type_associations,
+    appbundle_refresh_file_type_associations_init,
+    appbundle_mime_type_for_extension,
+    appbundle_write_mime_type_entry,
+    appbundle_write_association_entry,
+    appbundle_remove_file_type_association,
+    appbundle_refresh_file_type_associations_cleanup
 };
 
 #endif

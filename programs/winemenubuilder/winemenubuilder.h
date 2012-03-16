@@ -48,5 +48,12 @@ struct winemenubuilder_dispatch
             const char *destFilename, char **nativeIdentifier);
 
 
-    void (*refresh_file_type_associations)(void);
+    void *(*refresh_file_type_associations_init)(void);
+    BOOL (*mime_type_for_extension)(void *user, const char *extensionA, LPCWSTR extensionW, char **mime_type);
+    BOOL (*write_mime_type_entry)(void *user, const char *extensionA, const char *mimeTypeA, const char *friendlyDocNameA);
+    BOOL (*write_association_entry)(void *user, const char *extensionA, const char *friendlyAppNameA,
+            const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
+            const char *appIconA, const char *docIconA);
+    BOOL (*remove_file_type_association)(void *user, const char *extensionA, LPCWSTR extensionW);
+    void (*refresh_file_type_associations_cleanup)(void *user, BOOL hasChanged);
 };
