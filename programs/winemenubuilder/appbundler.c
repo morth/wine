@@ -331,6 +331,7 @@ CFDictionaryRef CreateMyDictionary(const char *linkname)
     //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
     CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
     CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
+    CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), linkstr );
     CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
     CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
     // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
@@ -618,6 +619,49 @@ static CFStringRef find_uti_for_tag(CFStringRef tagClass, const char *tag)
     return uti;
 }
 
+static CFMutableDictionaryRef document_type_dictionary(CFStringRef uti, const char *description, const char *icon)
+{
+    CFStringRef descStr = description ? CFStringCreateWithCString(NULL, description, kCFStringEncodingUTF8) : NULL;
+    CFStringRef iconStr = icon ? CFStringCreateWithCString(NULL, icon, kCFStringEncodingUTF8) : NULL;
+    CFMutableDictionaryRef res;
+
+    res = CFDictionaryCreateMutable(NULL, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+    if (icon)
+    	CFDictionarySetValue(res, CFSTR("CFBundleTypeIconFile"), iconStr);
+
+    if (description)
+    	CFDictionarySetValue(res, CFSTR("CFBundleTypeName"), descStr);
+    
+    /* XXX Viewer? Shell? */
+    CFDictionarySetValue(res, CFSTR("CFBundleTypeRole"), CFSTR("Editor"));
+    CFDictionarySetValue(res, CFSTR("LSItemContentTypes"), uti);
+    CFDictionarySetValue(res, CFSTR("LSHandlerRank"), CFSTR("Alternate"));
+    
+    if (descStr)
+    	CFRelease(descStr);
+    if (iconStr)
+        CFRelease(iconStr);
+
+    return res;
+}
+
+BOOL replace_document_type(CFPropertyListRef propertyList, CFStringRef uti, CFDictionaryRef dict)
+{
+    CFMutableDictionaryRef utis = (CFMutableDictionaryRef)CFDictionaryGetValue(propertyList, CFSTR("CFBundleDocumentTypes"));
+
+    if (!utis)
+    {
+        utis = CFDictionaryCreateMutable(NULL, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        CFDictionarySetValue((CFMutableDictionaryRef)propertyList, CFSTR("CFBundleDocumentTypes"), utis);
+    }
+
+    CFDictionarySetValue(utis, uti, dict);
+
+    return TRUE;
+}
+
+
 static CFMutableDictionaryRef exported_uti_dictionary(CFStringRef uti, const char *description, const char *icon,
         const char *extension, const char *mime_type)
 {
@@ -749,28 +793,26 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
 		const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
                 const char *appIconA, const char *docIconA)
 {
-    char *bundle_name = heap_printf("%s.app", friendlyAppNameA);
-    char *plist_path = heap_printf("%s/%s/Contents/Info.plist", wine_associations_dir, bundle_name);
-    struct stat st;
+    char *bundle_name = heap_printf("%s", progIdA);
+    char *plist_path;
     CFURLRef fileURL;
     CFMutableDictionaryRef dict;
     CFStringRef pathstr;
     CFPropertyListRef propertyList;
     CFStringRef uti;
     char utibuf[256];
+    CFStringRef winePrefix = CFStringCreateWithCString(NULL, wine_get_config_dir(), CFStringGetSystemEncoding());
+    CFStringRef progIdStr = CFStringCreateWithCString(NULL, progIdA, CFStringGetSystemEncoding());
+    char *args;
 
     WINE_TRACE("enter extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, appIconA, docIconA);
 
-    if (stat(plist_path, &st))
-    {
-        build_app_bundle(NULL, "start", "/AppleEvent", NULL, wine_associations_dir, friendlyAppNameA, friendlyAppNameA);
-        WINE_TRACE("new bundle %s\n", path_to_bundle);
-    }
-    else
-    {
-        path_to_bundle = heap_printf("%s/%s", wine_associations_dir, bundle_name);
-        WINE_TRACE("existing bundle %s\n", path_to_bundle);
-    }
+    plist_path = heap_printf("%s/%s.app/Contents/Info.plist", wine_associations_dir, bundle_name);
+
+    args = heap_printf("/AppleEvent /ProgIDOpen %s", progIdA);
+    WINE_TRACE("new bundle %s\n", path_to_bundle);
+    build_app_bundle(NULL, "start", args, NULL, wine_associations_dir, bundle_name, friendlyAppNameA);
+    HeapFree(GetProcessHeap(), 0, args);
 
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
     /* Create a URL that specifies the file we will create to hold the XML data. */
@@ -782,6 +824,9 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
     /* Open File */
     propertyList = CreateMyPropertyListFromFile( fileURL );
 
+    CFDictionaryAddValue((CFMutableDictionaryRef)propertyList, CFSTR("org.winehq.wineprefix"), winePrefix);
+    CFDictionaryAddValue((CFMutableDictionaryRef)propertyList, CFSTR("org.winehq.progid"), progIdStr);
+
     uti = find_uti_for_tag(kUTTagClassMIMEType, mimeTypeA);
     if (!uti)
         uti = find_uti_for_tag(kUTTagClassFilenameExtension, &extensionA[1]);
@@ -789,9 +834,14 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
         uti = CFStringCreateWithFormat(NULL, NULL, CFSTR("org.winehq.extension%s"), extensionA);
     CFStringGetCString(uti, utibuf, sizeof(utibuf), kCFStringEncodingUTF8);
     WINE_TRACE("uti = %s\n", utibuf);
-    dict = exported_uti_dictionary(uti, friendlyDocNameA, docIconA, &extensionA[1], mimeTypeA);
 
+    dict = exported_uti_dictionary(uti, friendlyDocNameA, docIconA, &extensionA[1], mimeTypeA);
     replace_exported_uti(propertyList, uti, dict);
+    CFRelease(dict);
+
+    dict = document_type_dictionary(uti, friendlyDocNameA, docIconA);
+    replace_document_type(propertyList, uti, dict);
+    CFRelease(dict);
 
     WriteMyPropertyListToFile( propertyList, fileURL );
 
@@ -813,6 +863,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
 
 BOOL appbundle_remove_file_type_association(void *user, const char *extensionA, LPCWSTR extensionW)
 {
+    /* TODO */
     return TRUE;
 }
 
