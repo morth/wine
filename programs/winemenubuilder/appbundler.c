@@ -267,13 +267,16 @@ HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     return CreateIconIdentifier(nativeIdentifier);
 }
 
-CFDictionaryRef CreateMyDictionary(const char *linkname, const char *icon)
+CFDictionaryRef CreateMyDictionary(const char *pathname, const char *linkname, const char *icon)
 {
     CFMutableDictionaryRef dict;
+    CFStringRef pathstr;
     CFStringRef linkstr;
+    CFStringRef idstr;
 
+    pathstr = CFStringCreateWithCString(NULL, pathname, CFStringGetSystemEncoding());
     linkstr = CFStringCreateWithCString(NULL, linkname, CFStringGetSystemEncoding());
-
+    idstr = CFStringCreateWithFormat(NULL, NULL, CFSTR("org.winehq.wine.%@"), linkstr);
 
     /* Create a dictionary that will hold the data. */
     dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
@@ -286,12 +289,13 @@ CFDictionaryRef CreateMyDictionary(const char *linkname, const char *icon)
     CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
     CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), linkstr );
     /* FIXME - Avoid identifier if not unique. */
-    //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") );
+    //CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), idstr );
     CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
     CFDictionarySetValue( dict, CFSTR("CFBundleName"), linkstr );
-    CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), linkstr );
+    CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), pathstr );
     CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
     CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
+    //CFDictionarySetValue( dict, CFSTR("LSHasLocalizedDisplayName"), kCFBooleanFalse );
     // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
     /* Fixme - install a default icon */
     //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
@@ -303,6 +307,9 @@ CFDictionaryRef CreateMyDictionary(const char *linkname, const char *icon)
 	CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), iconstr );
 	CFRelease(iconstr);
     }
+
+    CFRelease(linkstr);
+    CFRelease(idstr);
 
     return dict;
 }
@@ -393,7 +400,7 @@ BOOL modify_plist_value(char *plist_path, const char *key, char *value)
     return TRUE;
 }
 
-static BOOL generate_plist(const char *path_to_bundle_contents, const char *linkname, const char *icon)
+static BOOL generate_plist(const char *path_to_bundle_contents, const char *pathname, const char *linkname, const char *icon)
 {
     char *plist_path;
     static const char info_dot_plist_file[] = "Info.plist";
@@ -406,7 +413,7 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
 
     /* Construct a complex dictionary object */
-    propertyList = CreateMyDictionary(linkname, icon);
+    propertyList = CreateMyDictionary(pathname, linkname, icon);
 
     /* Create a URL that specifies the file we will create to hold the XML data. */
     fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
@@ -533,7 +540,7 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
         return ret;
 #endif
 
-    ret = generate_plist(path_to_bundle_contents, linkname, *icon);
+    ret = generate_plist(path_to_bundle_contents, link, linkname, *icon);
     if(ret==FALSE)
         return ret;
 
@@ -592,27 +599,27 @@ static CFStringRef find_uti_for_tag(CFStringRef tagClass, const char *tag)
     return uti;
 }
 
-static CFMutableDictionaryRef document_type_dictionary(CFStringRef uti, const char *description, const char *icon)
+static CFMutableDictionaryRef document_type_dictionary(CFStringRef uti, const char *icon)
 {
-    CFStringRef descStr = description ? CFStringCreateWithCString(NULL, description, kCFStringEncodingUTF8) : NULL;
     CFStringRef iconStr = icon ? CFStringCreateWithCString(NULL, icon, kCFStringEncodingUTF8) : NULL;
     CFMutableDictionaryRef res;
+    CFMutableArrayRef utis;
 
     res = CFDictionaryCreateMutable(NULL, 5, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 
     if (icon)
     	CFDictionarySetValue(res, CFSTR("CFBundleTypeIconFile"), iconStr);
 
-    if (description)
-    	CFDictionarySetValue(res, CFSTR("CFBundleTypeName"), descStr);
+    CFDictionarySetValue(res, CFSTR("CFBundleTypeName"), uti);
     
     /* XXX Viewer? Shell? */
     CFDictionarySetValue(res, CFSTR("CFBundleTypeRole"), CFSTR("Editor"));
-    CFDictionarySetValue(res, CFSTR("LSItemContentTypes"), uti);
+    utis = CFArrayCreateMutable(NULL, 1, &kCFTypeArrayCallBacks);
+    CFArrayAppendValue(utis, uti);
+    CFDictionarySetValue(res, CFSTR("LSItemContentTypes"), utis);
+    CFRelease(utis);
     CFDictionarySetValue(res, CFSTR("LSHandlerRank"), CFSTR("Alternate"));
     
-    if (descStr)
-    	CFRelease(descStr);
     if (iconStr)
         CFRelease(iconStr);
 
@@ -621,16 +628,37 @@ static CFMutableDictionaryRef document_type_dictionary(CFStringRef uti, const ch
 
 BOOL replace_document_type(CFPropertyListRef propertyList, CFStringRef uti, CFDictionaryRef dict)
 {
-    CFMutableDictionaryRef utis = (CFMutableDictionaryRef)CFDictionaryGetValue(propertyList, CFSTR("CFBundleDocumentTypes"));
+    CFMutableArrayRef docs = (CFMutableArrayRef)CFDictionaryGetValue(propertyList, CFSTR("CFBundleDocumentTypes"));
+    CFIndex count;
+    CFIndex i;
 
-    if (!utis)
+    if (docs)
+        count = CFArrayGetCount(docs);
+    else
     {
-        utis = CFDictionaryCreateMutable(NULL, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-        CFDictionarySetValue((CFMutableDictionaryRef)propertyList, CFSTR("CFBundleDocumentTypes"), utis);
+        docs = CFArrayCreateMutable(NULL, 1, &kCFTypeArrayCallBacks);
+        count = 0;
+        CFDictionarySetValue((CFMutableDictionaryRef)propertyList, CFSTR("CFBundleDocumentTypes"), docs);
     }
 
-    CFDictionarySetValue(utis, uti, dict);
+    for ( i = 0 ; i < count ; i++)
+    {
+        CFDictionaryRef d = CFArrayGetValueAtIndex(docs, i);
+        CFStringRef itemUti = CFDictionaryGetValue(d, CFSTR("CFBundleTypeName"));
 
+        if (CFEqual(uti, itemUti))
+            break;
+    }
+
+    if (i < count)
+    {
+        if (dict)
+            CFArrayReplaceValues(docs, CFRangeMake(i, 1), (const void*[]){ dict }, 1);
+        else
+            CFArrayRemoveValueAtIndex(docs, i);
+    }
+    else if (docs)
+        CFArrayAppendValue(docs, dict);
     return TRUE;
 }
 
@@ -814,7 +842,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
     replace_exported_uti(propertyList, uti, dict);
     CFRelease(dict);
 
-    dict = document_type_dictionary(uti, friendlyDocNameA, *docIconA);
+    dict = document_type_dictionary(uti, *docIconA);
     replace_document_type(propertyList, uti, dict);
     CFRelease(dict);
 
