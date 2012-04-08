@@ -1696,6 +1696,7 @@ static BOOL generate_associations(void *user)
             WCHAR *commandW = NULL;
             WCHAR *executableW = NULL;
             char *openWithIconA = NULL;
+            char *regOpenWithIconA = NULL;
             WCHAR *friendlyDocNameW = NULL;
             char *friendlyDocNameA = NULL;
             WCHAR *iconW = NULL;
@@ -1842,26 +1843,29 @@ static BOOL generate_associations(void *user)
                 }
             }
 
-            if (has_association_changed(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA))
+	    if (openWithIconA)
+	    	regOpenWithIconA = strdupA(openWithIconA);
+            if (has_association_changed(extensionW, mimeTypeA, progIdW, friendlyAppNameA, regOpenWithIconA))
             {
                 if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, &openWithIconA, &iconA))
                 {
                     hasChanged = TRUE;
-                    update_association(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA);
+                    update_association(extensionW, mimeTypeA, progIdW, friendlyAppNameA, regOpenWithIconA);
+
+                    /* Second icon pass after files are written. */
+                    if (executableW)
+                        extract_icon(executableW, 0, NULL, FALSE, &openWithIconA);
+                    if (flattened_mime)
+                        extract_icon(iconW, icon_index, flattened_mime, FALSE, &iconA);
                 }
             }
-
-            /* Second icon pass after files are written. */
-            if (executableW)
-                extract_icon(executableW, 0, NULL, FALSE, &openWithIconA);
-	    if (flattened_mime)
-                extract_icon(iconW, icon_index, flattened_mime, FALSE, &iconA);
 
         end:
             HeapFree(GetProcessHeap(), 0, extensionA);
             HeapFree(GetProcessHeap(), 0, commandW);
             HeapFree(GetProcessHeap(), 0, executableW);
             HeapFree(GetProcessHeap(), 0, openWithIconA);
+            HeapFree(GetProcessHeap(), 0, regOpenWithIconA);
             HeapFree(GetProcessHeap(), 0, friendlyDocNameW);
             HeapFree(GetProcessHeap(), 0, friendlyDocNameA);
             HeapFree(GetProcessHeap(), 0, iconW);
