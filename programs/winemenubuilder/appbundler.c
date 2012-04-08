@@ -136,8 +136,6 @@ static inline int size_to_slot(int size)
     return -1;
 }
 
-BOOL modify_plist_value(char *plist_path, const char *key, char *value);
-
 HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         const char *destFilename, char *icnsName)
 {
@@ -209,54 +207,26 @@ end:
     return hr;
 }
 
-static HRESULT CreateIconIdentifier(char **nativeIdentifier)
+static HRESULT CreateIconIdentifier(LPCWSTR icoPathW, char **nativeIdentifier)
 {
-    /* XXX a GUID is not really needed anymore. That was for when the icon went into /tmp.
-     * Could use eg. executable name instead */
-    HRESULT hr;
-    GUID guid;
-    WCHAR *guidStrW = NULL;
-    char *guidStrA = NULL;
-    char *icnsName = NULL;
+    char *str, *p, *q;
 
-    hr = CoCreateGuid(&guid);
-    if (FAILED(hr))
-    {
-        WINE_WARN("CoCreateGuid failed, error 0x%08X\n", hr);
-        goto end;
-    }
-    hr = StringFromCLSID(&guid, &guidStrW);
-    if (FAILED(hr))
-    {
-        WINE_WARN("StringFromCLSID failed, error 0x%08X\n", hr);
-        goto end;
-    }
-    guidStrA = wchars_to_utf8_chars(guidStrW);
-    if (guidStrA == NULL)
-    {
-        hr = E_OUTOFMEMORY;
-        WINE_WARN("out of memory converting GUID string\n");
-        goto end;
-    }
-
-    icnsName = heap_printf("%s.icns", guidStrA);
-    if (icnsName == NULL)
-    {
-        hr = E_OUTOFMEMORY;
-        WINE_WARN("out of memory creating ICNS path\n");
-        goto end;
-    }
-
-
-end:
-    CoTaskMemFree(guidStrW);
-    HeapFree(GetProcessHeap(), 0, guidStrA);
-    if (SUCCEEDED(hr))
-        *nativeIdentifier = icnsName;
+    str = wchars_to_utf8_chars(icoPathW);
+    p = strrchr(str, '\\');
+    if (p == NULL)
+        p = str;
     else
-        HeapFree(GetProcessHeap(), 0, icnsName);
-    return hr;
+    {
+        *p = 0;
+        p++;
+    }
+    q = strrchr(p, '.');
+    if (q)
+        *q = 0;
+    *nativeIdentifier = heap_printf("%s.icns", p);
 
+    HeapFree(GetProcessHeap(), 0, str);
+    return S_OK;
 }
 
 HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
@@ -264,7 +234,7 @@ HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
 {
     if (*nativeIdentifier)
         return WriteBundleIcon(icoStream, exeIndex, icoPathW, destFilename, *nativeIdentifier);
-    return CreateIconIdentifier(nativeIdentifier);
+    return CreateIconIdentifier(icoPathW, nativeIdentifier);
 }
 
 CFDictionaryRef CreateMyDictionary(const char *pathname, const char *linkname, const char *icon)
@@ -333,74 +303,8 @@ void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL
     // CFRelease(xmlData);
 }
 
-static CFPropertyListRef CreateMyPropertyListFromFile( CFURLRef fileURL )
-{
-    CFPropertyListRef propertyList;
-    CFStringRef       errorString;
-    CFDataRef         resourceData;
-    Boolean           status;
-    SInt32            errorCode;
-
-    /* Read the XML file */
-    status = CFURLCreateDataAndPropertiesFromResource(
-            kCFAllocatorDefault,
-            fileURL,
-            &resourceData,
-            NULL,
-            NULL,
-            &errorCode);
-
-    /* Reconstitute the dictionary using the XML data. */
-    propertyList = CFPropertyListCreateFromXMLData( kCFAllocatorDefault,
-            resourceData,
-            kCFPropertyListMutableContainers,
-            &errorString);
-
-    //CFRelease( resourceData );
-    return propertyList;
-}
-
-BOOL modify_plist_value(char *plist_path, const char *key, char *value)
-{
-    CFPropertyListRef propertyList;
-    CFStringRef pathstr;
-    CFStringRef keystr;
-    CFStringRef valuestr;
-    CFURLRef fileURL;
-
-    WINE_TRACE("Modifying Bundle Info.plist at %s\n", plist_path);
-
-    /* Convert strings to something these Mac APIs can handle */
-    pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
-    keystr = CFStringCreateWithCString(NULL, key, CFStringGetSystemEncoding());
-    valuestr = CFStringCreateWithCString(NULL, value, CFStringGetSystemEncoding());
-
-
-    /* Create a URL that specifies the file we will create to hold the XML data. */
-    fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
-            pathstr,
-            kCFURLPOSIXPathStyle,
-            false );
-
-    /* Open File */
-    propertyList = CreateMyPropertyListFromFile( fileURL );
-
-    /* Modify a value */
-    CFDictionaryAddValue( (CFMutableDictionaryRef)propertyList, keystr, valuestr );
-    //CFDictionarySetValue( propertyList, value_to_change, variable_to_write );
-
-    /* Write back to the file */
-    WriteMyPropertyListToFile( propertyList, fileURL );
-
-    //CFRelease(propertyList);
-    // CFRelease(fileURL);
-
-    WINE_TRACE("Modifed Bundle Info.plist at %s\n", wine_dbgstr_a(plist_path));
-
-    return TRUE;
-}
-
-static BOOL generate_plist(const char *path_to_bundle_contents, const char *pathname, const char *linkname, const char *icon)
+static BOOL generate_plist(const char *path_to_bundle_contents, const char *pathname, const char *linkname, const char *icon,
+		CFPropertyListRef *infoplist)
 {
     char *plist_path;
     static const char info_dot_plist_file[] = "Info.plist";
@@ -421,9 +325,14 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *path
             kCFURLPOSIXPathStyle,
             false );
 
-    /* Write the property list to the file */
-    WriteMyPropertyListToFile( propertyList, fileURL );
-    CFRelease(propertyList);
+    if (infoplist)
+        *infoplist = propertyList;
+    else
+    {
+        /* Write the property list to the file */
+        WriteMyPropertyListToFile( propertyList, fileURL );
+        CFRelease(propertyList);
+    }
 
 #if 0
     /* Recreate the property list from the file */
@@ -502,7 +411,7 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *workdir, const char *dir, const char *link, const char *linkname, char **icon)
+BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *workdir, const char *dir, const char *link, const char *linkname, char **icon, CFPropertyListRef *infoplist)
 {
     BOOL ret = FALSE;
     char *path_to_bundle, *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
@@ -540,7 +449,7 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
         return ret;
 #endif
 
-    ret = generate_plist(path_to_bundle_contents, link, linkname, *icon);
+    ret = generate_plist(path_to_bundle_contents, link, linkname, *icon, infoplist);
     if(ret==FALSE)
         return ret;
 
@@ -564,13 +473,13 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, char **icon)
 {
-    return !build_app_bundle(unix_link, path, args, workdir, mac_desktop_dir, link_name, link_name, icon);
+    return !build_app_bundle(unix_link, path, args, workdir, mac_desktop_dir, link_name, link_name, icon, NULL);
 }
 
 int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, char **icon)
 {
-    return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name, icon);
+    return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name, icon, NULL);
 }
 
 void *appbundle_refresh_file_type_associations_init(void)
@@ -814,7 +723,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
 
     args = heap_printf("/AppleEvent /ProgIDOpen %s", progIdA);
     WINE_TRACE("new bundle %s\n", path_to_bundle);
-    build_app_bundle(NULL, "start", args, NULL, wine_associations_dir, bundle_name, friendlyAppNameA, appIconA);
+    build_app_bundle(NULL, "start", args, NULL, wine_associations_dir, bundle_name, friendlyAppNameA, appIconA, &propertyList);
     HeapFree(GetProcessHeap(), 0, args);
 
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
@@ -823,9 +732,6 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
             pathstr,
             kCFURLPOSIXPathStyle,
             false );
-
-    /* Open File */
-    propertyList = CreateMyPropertyListFromFile( fileURL );
 
     CFDictionaryAddValue((CFMutableDictionaryRef)propertyList, CFSTR("org.winehq.wineprefix"), winePrefix);
     CFDictionaryAddValue((CFMutableDictionaryRef)propertyList, CFSTR("org.winehq.progid"), progIdStr);
