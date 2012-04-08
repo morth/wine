@@ -104,7 +104,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 
-static char *path_to_bundle = NULL;
 static char *mac_desktop_dir = NULL;
 static char *wine_applications_dir = NULL;
 static char *wine_associations_dir = NULL;
@@ -150,19 +149,8 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     } best[ICNS_SLOTS];
     int indexes[ICNS_SLOTS];
     int i;
-    char *icnsPath = NULL;
-    char *bundle_path = NULL;
-    char *plist_path = NULL;
-    const char *iconKey = "CFBundleIconFile";
     LARGE_INTEGER zero;
     HRESULT hr;
-    BOOL ret = FALSE;
-
-    if (!path_to_bundle)
-    {
-        hr = E_FAIL;
-        goto end;
-    }
 
     hr = read_ico_direntries(icoStream, &iconDirEntries, &numEntries);
     if (FAILED(hr))
@@ -200,18 +188,6 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         }
     }
 
-    bundle_path = heap_printf("%s/Contents/Resources", path_to_bundle);
-    WINE_TRACE("icns files should go in %s (full path)\n", wine_dbgstr_a(bundle_path));
-
-    icnsPath = heap_printf("%s/%s", bundle_path, icnsName);
-
-    if (icnsPath == NULL)
-    {
-        hr = E_OUTOFMEMORY;
-        WINE_WARN("out of memory creating ICNS path\n");
-        goto end;
-    }
-
     zero.QuadPart = 0;
     hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
     if (FAILED(hr))
@@ -220,30 +196,12 @@ HRESULT WriteBundleIcon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         goto end;
     }
     hr = convert_to_native_icon(icoStream, indexes, numEntries, &CLSID_WICIcnsEncoder,
-            icnsPath, icoPathW);
+            icnsName, icoPathW);
     if (FAILED(hr))
     {
         WINE_WARN("converting %s to %s failed, error 0x%08X\n",
-                wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsPath), hr);
+                wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsName), hr);
         goto end;
-    }
-
-    if (iconKey) {
-        plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
-        WINE_TRACE("attempting to modify %s (full path)\n", wine_dbgstr_a(plist_path));
-        ret = modify_plist_value(plist_path, iconKey, icnsName);
-    }
-
-    if (ret)
-    {
-        CFStringRef pathstr = CFStringCreateWithCString(NULL, path_to_bundle, CFStringGetSystemEncoding());
-        CFURLRef bundleURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
-                pathstr,
-                kCFURLPOSIXPathStyle,
-                false );
-        LSRegisterURL(bundleURL, true);
-        CFRelease(bundleURL);
-        CFRelease(pathstr);
     }
 
 end:
@@ -309,7 +267,7 @@ HRESULT appbundle_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
     return CreateIconIdentifier(nativeIdentifier);
 }
 
-CFDictionaryRef CreateMyDictionary(const char *linkname)
+CFDictionaryRef CreateMyDictionary(const char *linkname, const char *icon)
 {
     CFMutableDictionaryRef dict;
     CFStringRef linkstr;
@@ -337,6 +295,14 @@ CFDictionaryRef CreateMyDictionary(const char *linkname)
     // Not needed CFDictionarySetValue( dict, CFSTR("CFBundleSignature"), CFSTR("????") );
     /* Fixme - install a default icon */
     //CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), CFSTR("wine.icns") );
+
+    if (icon)
+    {
+	CFStringRef iconstr = CFStringCreateWithCString(NULL, icon, CFStringGetSystemEncoding());
+
+	CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), iconstr );
+	CFRelease(iconstr);
+    }
 
     return dict;
 }
@@ -427,7 +393,7 @@ BOOL modify_plist_value(char *plist_path, const char *key, char *value)
     return TRUE;
 }
 
-static BOOL generate_plist(const char *path_to_bundle_contents, const char *linkname)
+static BOOL generate_plist(const char *path_to_bundle_contents, const char *linkname, const char *icon)
 {
     char *plist_path;
     static const char info_dot_plist_file[] = "Info.plist";
@@ -440,7 +406,7 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *link
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
 
     /* Construct a complex dictionary object */
-    propertyList = CreateMyDictionary(linkname);
+    propertyList = CreateMyDictionary(linkname, icon);
 
     /* Create a URL that specifies the file we will create to hold the XML data. */
     fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
@@ -529,10 +495,10 @@ static BOOL generate_bundle_script(const char *path_to_bundle_macos, const char 
 }
 
 /* build out the directory structure for the bundle and then populate */
-BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *workdir, const char *dir, const char *link, const char *linkname)
+BOOL build_app_bundle(const char *unix_link, const char *path, const char *args, const char *workdir, const char *dir, const char *link, const char *linkname, char **icon)
 {
     BOOL ret = FALSE;
-    char *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
+    char *path_to_bundle, *bundle_name, *path_to_bundle_contents, *path_to_bundle_macos;
     char *path_to_bundle_resources, *path_to_bundle_resources_lang;
     static const char extentsion[] = "app";
     static const char contents[] = "Contents";
@@ -567,7 +533,7 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
         return ret;
 #endif
 
-    ret = generate_plist(path_to_bundle_contents, linkname);
+    ret = generate_plist(path_to_bundle_contents, linkname, *icon);
     if(ret==FALSE)
         return ret;
 
@@ -578,19 +544,26 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
             return FALSE;
     }
 
+    if (*icon)
+    {
+	char *tmp = heap_printf("%s/%s", path_to_bundle_resources, *icon);
+	HeapFree(GetProcessHeap(), 0, *icon);
+	*icon = tmp;
+    }
+
     return TRUE;
 }
 
 int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-        const char *args, const char *descr, const char *workdir, const char *icon)
+        const char *args, const char *descr, const char *workdir, char **icon)
 {
-    return !build_app_bundle(unix_link, path, args, workdir, mac_desktop_dir, link_name, link_name);
+    return !build_app_bundle(unix_link, path, args, workdir, mac_desktop_dir, link_name, link_name, icon);
 }
 
 int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-        const char *args, const char *descr, const char *workdir, const char *icon)
+        const char *args, const char *descr, const char *workdir, char **icon)
 {
-    return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name);
+    return !build_app_bundle(unix_link, path, args, workdir, wine_applications_dir, link, link_name, icon);
 }
 
 void *appbundle_refresh_file_type_associations_init(void)
@@ -791,7 +764,7 @@ BOOL appbundle_write_mime_type_entry(void *user, const char *extensionA, const c
 
 BOOL appbundle_write_association_entry(void *user, const char *extensionA, const char *friendlyAppNameA,
 		const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
-                const char *appIconA, const char *docIconA)
+                char **appIconA, char **docIconA)
 {
     char *bundle_name = heap_printf("%s", progIdA);
     char *plist_path;
@@ -804,14 +777,16 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
     CFStringRef winePrefix = CFStringCreateWithCString(NULL, wine_get_config_dir(), CFStringGetSystemEncoding());
     CFStringRef progIdStr = CFStringCreateWithCString(NULL, progIdA, CFStringGetSystemEncoding());
     char *args;
+    char *path_to_bundle;
 
-    WINE_TRACE("enter extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, appIconA, docIconA);
+    WINE_TRACE("enter extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, *appIconA, *docIconA);
 
-    plist_path = heap_printf("%s/%s.app/Contents/Info.plist", wine_associations_dir, bundle_name);
+    path_to_bundle = heap_printf("%s/%s.app", wine_associations_dir, bundle_name);
+    plist_path = heap_printf("%s/Contents/Info.plist", path_to_bundle);
 
     args = heap_printf("/AppleEvent /ProgIDOpen %s", progIdA);
     WINE_TRACE("new bundle %s\n", path_to_bundle);
-    build_app_bundle(NULL, "start", args, NULL, wine_associations_dir, bundle_name, friendlyAppNameA);
+    build_app_bundle(NULL, "start", args, NULL, wine_associations_dir, bundle_name, friendlyAppNameA, appIconA);
     HeapFree(GetProcessHeap(), 0, args);
 
     pathstr = CFStringCreateWithCString(NULL, plist_path, CFStringGetSystemEncoding());
@@ -835,15 +810,23 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
     CFStringGetCString(uti, utibuf, sizeof(utibuf), kCFStringEncodingUTF8);
     WINE_TRACE("uti = %s\n", utibuf);
 
-    dict = exported_uti_dictionary(uti, friendlyDocNameA, docIconA, &extensionA[1], mimeTypeA);
+    dict = exported_uti_dictionary(uti, friendlyDocNameA, *docIconA, &extensionA[1], mimeTypeA);
     replace_exported_uti(propertyList, uti, dict);
     CFRelease(dict);
 
-    dict = document_type_dictionary(uti, friendlyDocNameA, docIconA);
+    dict = document_type_dictionary(uti, friendlyDocNameA, *docIconA);
     replace_document_type(propertyList, uti, dict);
     CFRelease(dict);
 
     WriteMyPropertyListToFile( propertyList, fileURL );
+
+    /* Update docIcon to full path. App icon is handled by build_app_bundle */
+    if (*docIconA)
+    {
+	char *tmp = heap_printf("%s/Contents/Resources/%s", path_to_bundle, *docIconA);
+	HeapFree(GetProcessHeap(), 0, *docIconA);
+	*docIconA = tmp;
+    }
 
     {
         CFStringRef pathstr = CFStringCreateWithCString(NULL, path_to_bundle, CFStringGetSystemEncoding());
@@ -856,7 +839,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
         CFRelease(pathstr);
     }
 
-    WINE_TRACE("exit extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, appIconA, docIconA);
+    WINE_TRACE("exit extensionA = %s friendlyAppNameA = %s friendlyDocNameA = %s mimeTypeA = %s progIdA = %s appIconA = %s docIconA = %s\n", extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, *appIconA, *docIconA);
 
     return TRUE;
 }

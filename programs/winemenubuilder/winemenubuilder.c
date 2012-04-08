@@ -1844,7 +1844,7 @@ static BOOL generate_associations(void *user)
 
             if (has_association_changed(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA))
             {
-                if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, openWithIconA, iconA))
+                if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, &openWithIconA, &iconA))
                 {
                     hasChanged = TRUE;
                     update_association(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA);
@@ -2082,13 +2082,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             char *link_arg = escape_unix_link_arg(unix_link);
             if (link_arg)
             {
-                r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
+                r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, &icon_name);
                 HeapFree(GetProcessHeap(), 0, link_arg);
             }
         }
         else
         {
-            r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
+            r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, &icon_name);
         }
     }
     else
@@ -2096,7 +2096,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         char *link_arg = escape_unix_link_arg(unix_link);
         if (link_arg)
         {
-            r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
+            r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, &icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
         }
     }
@@ -2246,10 +2246,10 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
         ++lastEntry;
     if (in_desktop_dir(csidl))
     {
-        r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, &icon_name);
     }
     else
-        r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, &icon_name);
 
     extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
