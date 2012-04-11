@@ -284,19 +284,20 @@ CFDictionaryRef CreateMyDictionary(const char *pathname, const char *linkname, c
     return dict;
 }
 
-void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL )
+void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL, CFPropertyListFormat format)
 {
-    CFDataRef xmlData;
+    CFDataRef data;
     Boolean status;
     SInt32 errorCode;
+    CFErrorRef err = NULL;
 
     /* Convert the property list into XML data */
-    xmlData = CFPropertyListCreateXMLData( kCFAllocatorDefault, propertyList );
+    data = CFPropertyListCreateData(NULL, propertyList, format, 0, &err);
 
     /* Write the XML data to the file */
     status = CFURLWriteDataAndPropertiesToResource (
             fileURL,
-            xmlData,
+            data,
             NULL,
             &errorCode);
 
@@ -330,7 +331,7 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *path
     else
     {
         /* Write the property list to the file */
-        WriteMyPropertyListToFile( propertyList, fileURL );
+        WriteMyPropertyListToFile( propertyList, fileURL, kCFPropertyListXMLFormat_v1_0 );
         CFRelease(propertyList);
     }
 
@@ -344,6 +345,58 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *path
     CFRelease(fileURL);
 
     WINE_TRACE("Creating Bundle Info.plist at %s\n", wine_dbgstr_a(plist_path));
+
+    return TRUE;
+}
+
+CFDictionaryRef CreateStringsDictionary(const char *linkname)
+{
+    CFMutableDictionaryRef dict;
+    CFStringRef linkstr;
+
+    linkstr = CFStringCreateWithCString(NULL, linkname, CFStringGetSystemEncoding());
+
+    /* Create a dictionary that will hold the data. */
+    dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks );
+
+    CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), linkstr );
+
+    CFRelease(linkstr);
+
+    return dict;
+}
+
+static BOOL generate_plist_strings(const char *path_to_bundle_resources_lang, const char *linkname)
+{
+    char *strings_path;
+    static const char strings_file[] = "InfoPlist.strings";
+    CFPropertyListRef propertyList;
+    CFStringRef pathstr;
+    CFURLRef fileURL;
+
+    /* Append all of the filename and path stuff and shove it in to CFStringRef */
+    strings_path = heap_printf("%s/%s", path_to_bundle_resources_lang, strings_file);
+    pathstr = CFStringCreateWithCString(NULL, strings_path, CFStringGetSystemEncoding());
+
+    /* Construct a complex dictionary object */
+    propertyList = CreateStringsDictionary(linkname);
+
+    /* Create a URL that specifies the file we will create to hold the XML data. */
+    fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+            pathstr,
+            kCFURLPOSIXPathStyle,
+            false );
+
+    /* Write the property list to the file */
+    WriteMyPropertyListToFile( propertyList, fileURL, kCFPropertyListBinaryFormat_v1_0 );
+    CFRelease(propertyList);
+
+    CFRelease(fileURL);
+
+    WINE_TRACE("Creating InfoPlist.strings at %s\n", wine_dbgstr_a(strings_path));
 
     return TRUE;
 }
@@ -451,6 +504,10 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
 
     ret = generate_plist(path_to_bundle_contents, link, linkname, *icon, infoplist);
     if(ret==FALSE)
+        return ret;
+
+    ret = generate_plist_strings(path_to_bundle_resources_lang, linkname);
+    if (ret == FALSE)
         return ret;
 
     if (unix_link)
@@ -752,7 +809,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
     replace_document_type(propertyList, uti, dict);
     CFRelease(dict);
 
-    WriteMyPropertyListToFile( propertyList, fileURL );
+    WriteMyPropertyListToFile( propertyList, fileURL, kCFPropertyListXMLFormat_v1_0 );
 
     /* Update docIcon to full path. App icon is handled by build_app_bundle */
     if (*docIconA)
