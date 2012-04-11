@@ -865,7 +865,7 @@ BOOL appbundle_init(void)
         create_directories(wine_applications_dir);
         WINE_TRACE("%s\n", wine_applications_dir);
 
-        wine_associations_dir = heap_printf("%s/Applications/Wine/Associations", getenv("HOME"));
+        wine_associations_dir = heap_printf("%s/Library/Wine/Associations", getenv("HOME"));
         create_directories(wine_associations_dir);
         WINE_TRACE("%s\n", wine_associations_dir);
 
