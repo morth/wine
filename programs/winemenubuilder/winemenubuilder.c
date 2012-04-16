@@ -7,6 +7,7 @@
  * Copyright 2004 Dmitry Timoshkov
  * Copyright 2005 Bill Medland
  * Copyright 2008 Damjan Jovanovic
+ * Copyright 2011 - 2012 Per Johansson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public

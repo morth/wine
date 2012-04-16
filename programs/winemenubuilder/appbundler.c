@@ -2,6 +2,7 @@
  * Winemenubuilder support for Mac OS X Application Bundles
  *
  * Copyright 2011 Steven Edwards
+ * Copyright 2011 - 2012 Per Johansson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
