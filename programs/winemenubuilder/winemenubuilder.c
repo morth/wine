@@ -2680,7 +2680,27 @@ static BOOL dispatch_init(void)
 #ifdef __APPLE__
     extern struct winemenubuilder_dispatch appbundle_dispatch;
 #endif
-    const char *dispatch = getenv("WINEMENUBUILDER_DISPATCH");
+    const char *dispatch = NULL;
+    unsigned char buffer[256];
+    HKEY hkey;
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Wine\\MenuBuilder", 0, KEY_READ, &hkey) == ERROR_SUCCESS)
+    {
+        DWORD type, count = sizeof(buffer);
+
+        buffer[0] = 0;
+
+        RegQueryValueExA(hkey, "Dispatch", 0, &type, buffer, &count);
+        if (buffer[0] && type == REG_SZ)
+        {
+            dispatch = (char*)buffer;
+            WINE_TRACE("Dispatch set to %s from registry\n", dispatch);
+        }
+        else
+            WINE_TRACE("No Dispatch key in registry or type != string\n");
+    }
+    else
+        WINE_TRACE("No MenuBuilder key in registry\n");
 
     if (dispatch)
     {
@@ -2697,13 +2717,15 @@ static BOOL dispatch_init(void)
             return TRUE;
         }
 
-        WINE_WARN("Unknown WINEMENUBUILDER_DISPATCH \"%s\"", dispatch);
+        WINE_WARN("Unknown WINEMENUBUILDER_DISPATCH \"%s\"\n", dispatch);
     }
 
 #ifdef __APPLE__
     wmb_dispatch = &appbundle_dispatch;
+    WINE_TRACE("Dispatch set to appbundle by default\n");
 #else
     wmb_dispatch = &xdg_dispatch;
+    WINE_TRACE("Dispatch set to xdg by default\n");
 #endif
     return TRUE;
 }
