@@ -760,7 +760,7 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
 		const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
                 char **appIconA, char **docIconA)
 {
-    char *bundle_name = heap_printf("%s", progIdA);
+    char *bundle_name = heap_printf("wine-extension-%s", &extensionA[1]);
     char *plist_path;
     CFURLRef fileURL;
     CFMutableDictionaryRef dict;
@@ -837,8 +837,17 @@ BOOL appbundle_write_association_entry(void *user, const char *extensionA, const
 
 BOOL appbundle_remove_file_type_association(void *user, const char *extensionA, LPCWSTR extensionW)
 {
-    /* TODO */
-    return TRUE;
+    char *path_to_bundle = heap_printf("%s/wine-extension-%s.app", wine_associations_dir, &extensionA[1]);
+
+    if (path_to_bundle)
+    {
+        WINE_TRACE("removing file type association for %s\n", wine_dbgstr_w(extensionW));
+        remove_unix_link(path_to_bundle);
+        HeapFree(GetProcessHeap(), 0, path_to_bundle);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 void appbundle_refresh_file_type_associations_cleanup(void *user, BOOL hasChanged)
