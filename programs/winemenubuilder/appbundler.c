@@ -304,8 +304,7 @@ void WriteMyPropertyListToFile( CFPropertyListRef propertyList, CFURLRef fileURL
     // CFRelease(xmlData);
 }
 
-static BOOL generate_plist(const char *path_to_bundle_contents, const char *pathname, const char *linkname, const char *icon,
-		CFPropertyListRef *infoplist)
+static BOOL generate_plist(const char *path_to_bundle_contents, const char *pathname, const char *linkname, const char *icon)
 {
     char *plist_path;
     static const char info_dot_plist_file[] = "Info.plist";
@@ -326,14 +325,9 @@ static BOOL generate_plist(const char *path_to_bundle_contents, const char *path
             kCFURLPOSIXPathStyle,
             false );
 
-    if (infoplist)
-        *infoplist = propertyList;
-    else
-    {
-        /* Write the property list to the file */
-        WriteMyPropertyListToFile( propertyList, fileURL, kCFPropertyListXMLFormat_v1_0 );
-        CFRelease(propertyList);
-    }
+    /* Write the property list to the file */
+    WriteMyPropertyListToFile( propertyList, fileURL, kCFPropertyListXMLFormat_v1_0 );
+    CFRelease(propertyList);
 
 #if 0
     /* Recreate the property list from the file */
@@ -502,9 +496,14 @@ BOOL build_app_bundle(const char *unix_link, const char *path, const char *args,
         return ret;
 #endif
 
-    ret = generate_plist(path_to_bundle_contents, link, linkname, *icon, infoplist);
-    if(ret==FALSE)
-        return ret;
+    if (infoplist)
+        *infoplist = CreateMyDictionary(link, linkname, *icon);
+    else
+    {
+        ret = generate_plist(path_to_bundle_contents, link, linkname, *icon);
+        if(ret==FALSE)
+            return ret;
+    }
 
     ret = generate_plist_strings(path_to_bundle_resources_lang, linkname);
     if (ret == FALSE)
