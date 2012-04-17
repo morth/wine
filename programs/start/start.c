@@ -233,7 +233,7 @@ int wmain (int argc, WCHAR *argv[])
 			break;
 
 		/* Unix paths can start with / so we have to assume anything following /unix is not a flag */
-		if (unix_mode || progid_open)
+		if (unix_mode)
 			break;
 
 		if (argv[i][0] == '/' && (argv[i][1] == 'd' || argv[i][1] == 'D')) {
@@ -317,6 +317,7 @@ int wmain (int argc, WCHAR *argv[])
 		}
 		else if (is_option(argv[i], progIDOpenW)) {
 			progid_open = 1;
+			unix_mode = 1;
 		} else
 
 		{
@@ -343,7 +344,7 @@ int wmain (int argc, WCHAR *argv[])
 	args = build_args( argc - i, &argv[i] );
 	sei.lpParameters = args;
 
-	if (unix_mode || progid_open) {
+	if (unix_mode) {
 		LPWSTR (*CDECL wine_get_dos_file_name_ptr)(LPCSTR);
 		char* multibyte_unixpath;
 		int multibyte_unixpath_len;
