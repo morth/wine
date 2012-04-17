@@ -815,6 +815,16 @@ case $host_os in
                                        AC_MSG_ERROR([Xcode 3.x cannot build 16-bit code correctly. Use --disable-win16 if you don't need 16-bit support.])],
                                        AC_MSG_RESULT([[cross-compiling, assuming yes]]))
     fi
+    if test "$ac_cv_header_CoreServices_CoreServices_h" = "yes"
+    then
+        ac_save_LIBS="$LIBS"
+        LIBS="$LIBS $CORESERVICESLIB"
+        AC_CHECK_FUNCS(\
+                        _LSGetCurrentApplicationASN \
+                        _LSCopyLaunchModifiers \
+                      )
+        LIBS="$ac_save_LIBS"
+    fi
     ;;
   *)
     DLLFLAGS="$DLLFLAGS -fPIC"
