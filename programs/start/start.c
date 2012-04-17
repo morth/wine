@@ -20,6 +20,61 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+
+#ifdef __APPLE__
+#ifdef HAVE_CARBON_CARBON_H
+#define GetCurrentProcess GetCurrentProcess_Mac
+#define GetCurrentThread GetCurrentThread_Mac
+#define LoadResource LoadResource_Mac
+#define EqualRect EqualRect_Mac
+#define FillRect FillRect_Mac
+#define FrameRect FrameRect_Mac
+#define GetCursor GetCursor_Mac
+#define InvertRect InvertRect_Mac
+#define OffsetRect OffsetRect_Mac
+#define PtInRect PtInRect_Mac
+#define SetCursor SetCursor_Mac
+#define SetRect SetRect_Mac
+#define ShowCursor ShowCursor_Mac
+#define UnionRect UnionRect_Mac
+#define Polygon Polygon_Mac
+#define CheckMenuItem CheckMenuItem_Mac
+#define DeleteMenu DeleteMenu_Mac
+#define DrawMenuBar DrawMenuBar_Mac
+#define EnableMenuItem EnableMenuItem_Mac
+#define GetMenu GetMenu_Mac
+#define IsWindowVisible IsWindowVisible_Mac
+#define MoveWindow MoveWindow_Mac
+#define ShowWindow ShowWindow_Mac
+#include <Carbon/Carbon.h>
+#undef GetCurrentProcess
+#undef GetCurrentThread
+#undef LoadResource
+#undef EqualRect
+#undef FillRect
+#undef FrameRect
+#undef GetCursor
+#undef InvertRect
+#undef OffsetRect
+#undef PtInRect
+#undef SetCursor
+#undef SetRect
+#undef ShowCursor
+#undef UnionRect
+#undef Polygon
+#undef CheckMenuItem
+#undef DeleteMenu
+#undef DrawMenuBar
+#undef EnableMenuItem
+#undef GetMenu
+#undef IsWindowVisible
+#undef MoveWindow
+#undef ShowWindow
+#undef DPRINTF
+#endif
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
@@ -169,6 +224,232 @@ static WCHAR *get_parent_dir(WCHAR* path)
 	return result;
 }
 
+#ifdef __APPLE__
+OSErr launch_appleevent_callback(const AppleEvent *event, AppleEvent *reply, SRefCon handlerRefcon)
+{
+	AEDesc *dstDesc = (AEDesc*)handlerRefcon;
+
+	TRACE("event %p\n", event);
+
+	AEDisposeDesc(dstDesc);
+	AEDuplicateDesc(event, dstDesc);
+	return noErr;
+}
+
+
+int get_launch_appleevent(AEDesc *dst)
+{
+	OSErr err;
+
+	AEInitializeDesc(dst);
+
+	err = AEInstallEventHandler(typeWildCard, typeWildCard, launch_appleevent_callback, (SRefCon)dst, false);
+	if (err)
+	{
+		WINE_ERR("AEInstallEventHandler failed %d.\n", err);
+		return -1;
+	}
+
+	while (dst->descriptorType == typeNull)
+	{
+		static const EventTypeSpec appleEventSpec = { kEventClassAppleEvent, kEventAppleEvent };
+		EventRef event;
+
+		/* Wait up to 10 seconds for an AppleEvent. */
+		err = ReceiveNextEvent(1, &appleEventSpec, 10.0, kEventRemoveFromQueue, &event);
+		if (err)
+		{
+			if (err == eventLoopTimedOutErr)
+				TRACE("timed out\n");
+			else
+				WINE_ERR("ReceiveNextEvent err = %d\n", err);
+			break;
+		}
+		err = AEProcessEvent(event);
+		ReleaseEvent(event);
+		if (err)
+		{
+			WINE_ERR("AEProcessEvent err = %d\n", err);
+			break;
+		}
+
+		if (dst->descriptorType == typeAppleEvent && WINE_TRACE_ON(start))
+		{
+			AEEventClass evcl;
+			AEEventID evid;
+
+			if (!AEGetAttributePtr(dst, keyEventClassAttr, typeWildCard, NULL, &evcl, sizeof(evcl), NULL)
+					&& !AEGetAttributePtr(dst, keyEventIDAttr, typeWildCard, NULL, &evid, sizeof(evid), NULL))
+			{
+				TRACE("event is %c%c%c%c/%c%c%c%c\n", 
+						(int)(evcl >> 24) & 0xFF, (int)(evcl >> 16) & 0xFF, (int)(evcl >> 8) & 0xFF, (int)evcl & 0xFF,
+						(int)(evid >> 24) & 0xFF, (int)(evid >> 16) & 0xFF, (int)(evid >> 8) & 0xFF, (int)evid & 0xFF);
+			}
+		}
+	}
+
+	AERemoveEventHandler(typeWildCard, typeWildCard, launch_appleevent_callback, false);
+	return 0;
+}
+
+
+static WCHAR *get_file_from_odoc_appleevent(AEDesc *event)
+{
+	OSStatus oserr;
+	AEDesc doclist;
+	long count;
+	WCHAR *file = NULL;
+	long i;
+	unsigned char urlbuf[4096];
+	Size urllen;
+
+	oserr = AEGetParamDesc(event, keyDirectObject, typeAEList, &doclist);
+	if (oserr)
+		return NULL;
+
+	oserr = AECountItems(&doclist, &count);
+	if (oserr)
+		goto out;
+
+	/* FIXME - an AppleEvent can contain multiple files which should all be opened */
+	for (i = 1 ; !file && i <= count ; i++)
+	{
+		CFURLRef url = NULL;
+		CFStringRef urlstring;
+
+		oserr = AEGetNthPtr(&doclist, i, typeFileURL, NULL, NULL, urlbuf, sizeof(urlbuf), &urllen);
+		if (oserr)
+		{
+			WINE_ERR("AEGetNthPtr failed err = %d\n", (int)oserr);
+			if (oserr == errAECoercionFail && WINE_TRACE_ON(start))
+			{
+				AEDesc dataDesc;
+
+				oserr = AEGetNthDesc(&doclist, i, typeWildCard, NULL, &dataDesc);
+				if (!oserr)
+				{
+					TRACE("Actual type is %c%c%c%c\n", 
+							(int)(dataDesc.descriptorType >> 24) & 0xFF, (int)(dataDesc.descriptorType >> 16) & 0xFF, (int)(dataDesc.descriptorType >> 8) & 0xFF, (int)dataDesc.descriptorType & 0xFF);
+					AEDisposeDesc(&dataDesc);
+				}
+			}
+			continue;
+		}
+		if (urllen >= sizeof(urlbuf))
+		{
+			WINE_ERR("buffer overflow\n");
+			continue;
+		}
+
+		urlstring = CFStringCreateWithBytesNoCopy(NULL, urlbuf, urllen, kCFStringEncodingUTF8, false, kCFAllocatorNull);
+		if (urlstring)
+			url = CFURLCreateWithString(NULL, urlstring, NULL);
+
+		if (url)
+		{
+			LPWSTR (*CDECL wine_get_dos_file_name_ptr)(LPCSTR);
+			char pathbuf[PATH_MAX];
+
+			wine_get_dos_file_name_ptr = (void*)GetProcAddress(GetModuleHandleA("KERNEL32"), "wine_get_dos_file_name");
+			if (!wine_get_dos_file_name_ptr)
+				fatal_string(STRING_UNIXFAIL);
+
+			CFURLGetFileSystemRepresentation(url, FALSE, (UInt8*)pathbuf, sizeof(pathbuf));
+			file = wine_get_dos_file_name_ptr(pathbuf);
+
+			TRACE("unix path = %s, windows path = %s\n", wine_dbgstr_a(pathbuf), wine_dbgstr_w(file));
+
+			if (!file)
+				fatal_string(STRING_UNIXFAIL);
+		}
+		if (url)
+			CFRelease(url);
+		if (urlstring)
+			CFRelease(urlstring);
+	}
+out:
+
+	AEDisposeDesc(&doclist);
+	return file;
+}
+
+static WCHAR *get_file_from_gurl_appleevent(AEDesc *event)
+{
+	OSStatus oserr;
+	char urlbuf[4096];
+	Size urllen;
+	WCHAR *file = NULL;
+	int file_len;
+
+	oserr = AEGetParamPtr(event, keyDirectObject, typeUTF8Text, NULL, urlbuf, sizeof(urlbuf), &urllen);
+	if (oserr)
+		return NULL;
+	if (urllen > sizeof(urlbuf))
+		return NULL;
+
+	file_len = MultiByteToWideChar(CP_UTF8, 0, urlbuf, urllen, NULL, 0);
+	file = HeapAlloc(GetProcessHeap(), 0, (file_len + 1) * sizeof(WCHAR));
+	MultiByteToWideChar(CP_UTF8, 0, urlbuf, urllen, file, file_len);
+	file[file_len] = '\0';
+	TRACE("URL = %s\n", wine_dbgstr_w(file));
+
+	return file;
+}
+#endif
+
+static WCHAR *get_file_from_appleevent(void)
+{
+#ifdef __APPLE__
+	AEDesc desc;
+	AEEventClass evcl;
+	AEEventID evid;
+	OSStatus oserr;
+	WCHAR *file = NULL;
+
+	get_launch_appleevent(&desc);
+	if (desc.descriptorType != typeAppleEvent)
+		goto out;
+
+	oserr = AEGetAttributePtr(&desc, keyEventClassAttr, typeWildCard, NULL, &evcl, sizeof(evcl), NULL);
+	if (oserr)
+		goto out;
+	oserr = AEGetAttributePtr(&desc, keyEventIDAttr, typeWildCard, NULL, &evid, sizeof(evid), NULL);
+	if (oserr)
+		goto out;
+
+	switch (evcl) {
+	case kCoreEventClass:
+		switch (evid) {
+#if 0
+		case kAEOpenApplication:
+			break;
+#endif
+		case kAEOpenDocuments:
+			file = get_file_from_odoc_appleevent(&desc);
+			break;
+#if 0
+		case kAEOpenContents:
+			break;
+#endif
+		}
+		break;
+	case kInternetEventClass:
+		switch (evid) {
+		case kAEGetURL:
+			file = get_file_from_gurl_appleevent(&desc);
+			break;
+		}
+		break;
+	}
+
+out:
+	AEDisposeDesc(&desc);
+	return file;
+#else
+	return NULL;
+#endif
+}
+
 static BOOL is_option(const WCHAR* arg, const WCHAR* opt)
 {
     return CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE,
@@ -183,6 +464,7 @@ int wmain (int argc, WCHAR *argv[])
 	int i;
 	int unix_mode = 0;
 	int progid_open = 0;
+	int appleevent_mode = 0;
 	WCHAR *title = NULL;
 	WCHAR *dos_filename = NULL;
 	WCHAR *parent_directory = NULL;
@@ -205,6 +487,7 @@ int wmain (int argc, WCHAR *argv[])
 	static const WCHAR waitW[] = { '/', 'w', 'a', 'i', 't', 0 };
 	static const WCHAR helpW[] = { '/', '?', 0 };
 	static const WCHAR unixW[] = { '/', 'u', 'n', 'i', 'x', 0 };
+	static const WCHAR appleEventW[] = { '/', 'a', 'p', 'p', 'l', 'e', 'E', 'v', 'e', 'n', 't', 0 };
 	static const WCHAR progIDOpenW[] =
 		{ '/', 'p', 'r', 'o', 'g', 'I', 'D', 'O', 'p', 'e', 'n', 0};
 	static const WCHAR openW[] = { 'o', 'p', 'e', 'n', 0 };
@@ -315,9 +598,13 @@ int wmain (int argc, WCHAR *argv[])
 		else if (is_option(argv[i], unixW)) {
 			unix_mode = 1;
 		}
+		else if (is_option(argv[i], appleEventW)) {
+			appleevent_mode = 1;
+		}
 		else if (is_option(argv[i], progIDOpenW)) {
 			progid_open = 1;
-			unix_mode = 1;
+			if (!appleevent_mode)
+				unix_mode = 1;
 		} else
 
 		{
@@ -333,13 +620,22 @@ int wmain (int argc, WCHAR *argv[])
 		sei.fMask |= SEE_MASK_CLASSNAME;
 	}
 
-	if (i == argc) {
-		if (unix_mode)
+	if (appleevent_mode) {
+		if (i != argc)
 			usage();
-		sei.lpFile = cmdW;
+
+		sei.lpFile = get_file_from_appleevent();
+		if (!sei.lpFile)
+			fatal_string(STRING_APPLEEVENTFAIL);
+	} else {
+		if (i == argc) {
+			if (unix_mode)
+				usage();
+			sei.lpFile = cmdW;
+		}
+		else
+			sei.lpFile = argv[i++];
 	}
-	else
-		sei.lpFile = argv[i++];
 
 	args = build_args( argc - i, &argv[i] );
 	sei.lpParameters = args;
@@ -419,6 +715,9 @@ done:
 		GetExitCodeProcess(sei.hProcess, &exitcode);
 		ExitProcess(exitcode);
 	}
+
+	if (appleevent_mode)
+		HeapFree( GetProcessHeap(), 0, (void*)sei.lpFile );
 
 	ExitProcess(0);
 }
