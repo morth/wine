@@ -1157,6 +1157,12 @@
 /* Define to 1 if you have the `_isnan' function. */
 #undef HAVE__ISNAN
 
+/* Define to 1 if you have the `_LSCopyLaunchModifiers' function. */
+#undef HAVE__LSCOPYLAUNCHMODIFIERS
+
+/* Define to 1 if you have the `_LSGetCurrentApplicationASN' function. */
+#undef HAVE__LSGETCURRENTAPPLICATIONASN
+
 /* Define to 1 if you have the `_pclose' function. */
 #undef HAVE__PCLOSE
 
