@@ -35,6 +35,8 @@ typedef struct
     WORD idCount;
 } ICONDIR;
 
+DEFINE_GUID(CLSID_WICIcnsEncoder, 0x312fb6f1,0xb767,0x409d,0x8a,0x6d,0x0f,0xc1,0x54,0xd4,0xf0,0x5c);
+
 char* heap_printf(const char *format, ...);
 WCHAR* assoc_query(ASSOCSTR assocStr, LPCWSTR name, LPCWSTR extra);
 BOOL create_directories(char *directory);
@@ -46,19 +48,20 @@ char* wchars_to_utf8_chars(LPCWSTR string);
 HRESULT convert_to_native_icon(IStream *icoFile, int *indeces, int numIndeces,
                                       const CLSID *outputFormat, const char *outputFileName, LPCWSTR commentW);
 
-char *extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait);
+void extract_icon(LPCWSTR icoPathW, int index, const char *destFilename, BOOL bWait, char **nativeIdentifier);
 
 LPSTR escape(LPCWSTR arg);
 WCHAR* utf8_chars_to_wchars(LPCSTR string);
+BOOL remove_unix_link(const char *unix_link);
 
 struct winemenubuilder_dispatch
 {
     BOOL (*init)(void);
 
     int (*build_desktop_link)(const char *unix_link, const char *link, const char *link_name, const char *path,
-            const char *args, const char *descr, const char *workdir, char *icon);
+            const char *args, const char *descr, const char *workdir, char **icon);
     int (*build_menu_link)(const char *unix_link, const char *link, const char *link_name, const char *path,
-            const char *args, const char *descr, const char *workdir, char *icon);
+            const char *args, const char *descr, const char *workdir, char **icon);
 
     HRESULT (*write_icon)(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
             const char *destFilename, char **nativeIdentifier);
@@ -69,7 +72,7 @@ struct winemenubuilder_dispatch
     BOOL (*write_mime_type_entry)(void *user, const char *extensionA, const char *mimeTypeA, const char *friendlyDocNameA);
     BOOL (*write_association_entry)(void *user, const char *extensionA, const char *friendlyAppNameA,
             const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
-            char *appIconA);
+            char **appIconA, char **docIconA);
     BOOL (*remove_file_type_association)(void *user, const char *extensionA, LPCWSTR extensionW);
     void (*refresh_file_type_associations_cleanup)(void *user, BOOL hasChanged);
 };

@@ -35,6 +35,7 @@
 #include <stdio.h>
 
 #include "wine/test.h"
+#include "winemenubuilder_test.h"
 
 /* delete key and all its subkeys */
 DWORD delete_key( HKEY hkey )
@@ -467,17 +468,13 @@ static void test_create_association(void)
 
     verify_file_present("xdg_data\\mime\\packages\\x-wine-extension-wmbtest1.xml");
     verify_file_present("xdg_data\\mime\\packages\\x-wine-extension-wmbtest2.xml");
-#ifndef __APPLE__ /* Icons go to /tmp/ on OS X */
     verify_file_present("xdg_data\\icons\\hicolor\\16x16\\apps\\application-x-wine-extension-wmbtest2.png");
     verify_file_present("xdg_data\\icons\\hicolor\\32x32\\apps\\application-x-wine-extension-wmbtest2.png");
     verify_file_present("xdg_data\\icons\\hicolor\\48x48\\apps\\application-x-wine-extension-wmbtest2.png");
-#endif
     verify_file_present("xdg_data\\applications\\wine-extension-wmbtest2.desktop");
-#ifndef __APPLE__
     verify_file_present("xdg_data\\icons\\hicolor\\16x16\\apps\\*_cmd.0.png");
     verify_file_present("xdg_data\\icons\\hicolor\\32x32\\apps\\*_cmd.0.png");
     verify_file_present("xdg_data\\icons\\hicolor\\48x48\\apps\\*_cmd.0.png");
-#endif
 }
 
 static void test_remove_association(void)
