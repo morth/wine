@@ -432,18 +432,31 @@ void remove_association_keys(void)
 
 static void setup_environment(void)
 {
+    HKEY key;
+
     putenv((char*)"XDG_CONFIG_HOME=xdg_config");
     putenv((char*)"XDG_DATA_HOME=xdg_data");
+
+    if (!RegOpenKeyA(HKEY_CURRENT_USER, "Software\\Wine\\MenuBuilder", &key))
+        delete_key(key);
+    ok(!RegCreateKeyA(HKEY_CURRENT_USER, "Software\\Wine\\MenuBuilder", &key), "Failed to create dispatch key\n");
+    ok(!RegSetValueExA(key, "Dispatch", 0, REG_SZ, (BYTE*)"xdg", sizeof("xdg")), "Failed to set dispatch value\n");
+    RegCloseKey(key);
 }
 
 static void cleanup_environment(void)
 {
+    HKEY key;
     char buffer[MAX_PATH];
 
     strcpy(buffer, "xdg_config");
     ok(remove_recursive(buffer), "Failed to cleanup xdg_config\n");
     strcpy(buffer, "xdg_data");
     ok(remove_recursive(buffer), "Failed to cleanup xdg_data\n");
+
+    /* TODO: restore old contents, if any */
+    if (!RegOpenKeyA(HKEY_CURRENT_USER, "Software\\Wine\\MenuBuilder", &key))
+        delete_key(key);
 }
 
 static void test_create_association(void)
