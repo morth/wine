@@ -2149,6 +2149,9 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
     char *start_path = NULL;
     const char *lastEntry;
 
+    pv[0].vt = VT_EMPTY;
+    pv[1].vt = VT_EMPTY;
+
     if ( !link )
     {
         WINE_ERR("Link name is null\n");
@@ -2217,8 +2220,6 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
 
                     WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
                 }
-                PropVariantClear(&pv[0]);
-                PropVariantClear(&pv[1]);
             }
             IPropertyStorage_Release(pPropStg);
         }
@@ -2256,8 +2257,11 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
     else
         r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, &icon_name);
 
-    extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
-    WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
+    if (pv[0].vt == VT_LPWSTR && pv[0].u.pwszVal)
+    {
+        extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, NULL, bWait, &icon_name );
+        WINE_TRACE("URL icon path: %s icon index: %d icon name: %s\n", wine_dbgstr_w(pv[0].u.pwszVal), pv[1].u.iVal, icon_name);
+    }
 
     ret = (r != 0);
     ReleaseSemaphore(hSem, 1, NULL);
@@ -2270,6 +2274,8 @@ cleanup:
     CoTaskMemFree( urlPath );
     HeapFree(GetProcessHeap(), 0, escaped_urlPath);
     HeapFree(GetProcessHeap(), 0, unix_link);
+    PropVariantClear(&pv[0]);
+    PropVariantClear(&pv[1]);
     return ret;
 }
 
