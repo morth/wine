@@ -1,0 +1,6 @@
+TESTDLL   = winemenubuilder.exe
+
+C_SRCS = 
+	
+
+@MAKE_TEST_RULES@
