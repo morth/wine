@@ -6784,16 +6784,18 @@ done
     case $host_cpu in
       *powerpc*)
         LDDLLFLAGS="$LDDLLFLAGS -read_only_relocs warning"          ;;
-    esac
-    if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
-    then
-        QUICKTIMELIB="-framework QuickTime -framework ApplicationServices -framework CoreVideo"
+      *i386*)
+        if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
+        then
+          QUICKTIMELIB="-framework QuickTime -framework ApplicationServices -framework CoreVideo"
 
-        enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
-    else
-        as_fn_append wine_notices "|QuickTime ${notice_platform}development files not found, video decoding won't be supported."
-    fi
-    if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
+          enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
+        else
+          as_fn_append wine_notices "|QuickTime ${notice_platform}development files not found, video decoding won't be supported."
+        fi
+        ;;
+    esac
+        if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
     then
         CARBONLIB="-framework Carbon"
 

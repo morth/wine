@@ -803,14 +803,17 @@ clean::
       *powerpc*)
         LDDLLFLAGS="$LDDLLFLAGS -read_only_relocs warning"  dnl FIXME
         ;;
+      *i386*)
+        if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
+        then
+          AC_SUBST(QUICKTIMELIB,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
+          enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
+        else
+          WINE_NOTICE([QuickTime ${notice_platform}development files not found, video decoding won't be supported.])
+        fi
+        ;;
     esac
-    if test "$ac_cv_header_QuickTime_ImageCompression_h" = "yes"
-    then
-        AC_SUBST(QUICKTIMELIB,"-framework QuickTime -framework ApplicationServices -framework CoreVideo")
-        enable_wineqtdecoder=${enable_wineqtdecoder:-yes}
-    else
-        WINE_NOTICE([QuickTime ${notice_platform}development files not found, video decoding won't be supported.])
-    fi
+    dnl Enable Mac driver on Mac OS X
     if test "$ac_cv_header_Carbon_Carbon_h" = "yes"
     then
         AC_SUBST(CARBONLIB,"-framework Carbon")
