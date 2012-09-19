@@ -1,0 +1,7 @@
+TESTDLL   = winemenubuilder.exe
+IMPORTS   = advapi32 shell32 ole32 psapi
+
+C_SRCS = \
+	xdg.c
+
+@MAKE_TEST_RULES@
