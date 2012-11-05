@@ -1,0 +1,10 @@
+MODULE    = winehostproxy.exe
+APPMODE   = -mconsole -municode
+IMPORTS   = shell32
+EXTRALIBS = @CARBONLIB@
+
+C_SRCS = \
+	winehostproxy.c \
+	appleevent.c
+
+@MAKE_PROG_RULES@

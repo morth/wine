@@ -15952,6 +15952,7 @@ wine_fn_config_program wineconsole enable_wineconsole install,installbin,manpage
 wine_fn_config_program winedbg enable_winedbg install,installbin,manpage,po
 wine_fn_config_program winedevice enable_winedevice install
 wine_fn_config_program winefile enable_winefile install,installbin,manpage,po
+wine_fn_config_program winehostproxy enable_winehostproxy install
 wine_fn_config_program winemenubuilder enable_winemenubuilder install
 wine_fn_config_program winemine enable_winemine install,installbin,manpage,po
 wine_fn_config_program winemsibuilder enable_winemsibuilder install
