@@ -93,6 +93,8 @@ int wmain(int argc, WCHAR *argv[])
 {
     static const WCHAR dash_psnW[] = {'-','p','s','n'};
 
+    setup_wineprefix();
+
     if (argc >= 2)
     {
         if (strncmpW(argv[1], dash_psnW, sizeof(dash_psnW) / sizeof(dash_psnW[0])) == 0)
