@@ -1773,6 +1773,7 @@ then
   fi
 
   dnl Check for some compiler flags
+  WINE_TRY_CFLAGS([-Werror],[ac_wine_try_cflags_werror=-Werror])
   WINE_TRY_CFLAGS([-fno-builtin],[AC_SUBST(BUILTINFLAG,"-fno-builtin")])
   WINE_TRY_CFLAGS([-fno-strict-aliasing])
   dnl clang needs to be told to fail on unknown options
