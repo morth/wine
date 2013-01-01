@@ -35,6 +35,16 @@ typedef struct
     WORD idCount;
 } ICONDIR;
 
+char *strdupA( const char *str );
+char* heap_printf(const char *format, ...);
+BOOL create_directories(char *directory);
+DWORD register_menus_entry(const char *unix_file, const char *windows_file);
+char* wchars_to_utf8_chars(LPCWSTR string);
+HRESULT read_ico_direntries(IStream *icoStream, ICONDIRENTRY **ppIconDirEntries, int *numEntries);
+char* compute_native_identifier(int exeIndex, LPCWSTR icoPathW);
+HRESULT convert_to_native_icon(IStream *icoFile, int *indices, int numIndices,
+                                      const CLSID *outputFormat, const char *outputFileName, LPCWSTR commentW);
+
 struct winemenubuilder_dispatch
 {
     BOOL (*init)(void);

@@ -3,6 +3,7 @@ APPMODE   = -mwindows -municode
 IMPORTS   = uuid windowscodecs shell32 shlwapi ole32 user32 advapi32
 
 C_SRCS = \
-	winemenubuilder.c
+	winemenubuilder.c \
+	xdg.c
 
 @MAKE_PROG_RULES@
