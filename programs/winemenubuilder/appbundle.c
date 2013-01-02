@@ -37,6 +37,8 @@
 #include "config.h"
 #include "wine/port.h"
 
+#include <stdio.h>
+
 #define COBJMACROS
 #define NONAMELESSUNION
 
@@ -57,19 +59,92 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 
+static char *mac_desktop_dir = NULL;
+static char *wine_applications_dir = NULL;
+
 extern HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
                                    const char *destFilename, char **nativeIdentifier);
+
+/* inspired by write_desktop_entry() in xdg support code */
+static BOOL generate_bundle_script(const char *file, const char *path,
+        const char *args, const char *workdir)
+{
+    FILE *fp;
+    const char *libpath;
+
+    WINE_TRACE("Creating Bundle helper script at %s\n", wine_dbgstr_a(file));
+
+    fp = fopen(file, "w");
+    if (fp == NULL)
+        return FALSE;
+
+    fprintf(fp, "#!/bin/sh\n");
+
+    fprintf(fp, "PATH=\"%s\"\nexport PATH\n", getenv("PATH"));
+    libpath = getenv("DYLD_FALLBACK_LIBRARY_PATH");
+    if (libpath)
+        fprintf(fp, "DYLD_FALLBACK_LIBRARY_PATH=\"%s\"\nexport DYLD_FALLBACK_LIBRARY_PATH\n", libpath);
+    fprintf(fp, "WINEPREFIX=\"%s\"\nexport WINEPREFIX\n\n", wine_get_config_dir());
+
+    if (workdir)
+        fprintf(fp, "cd \"%s\"\n", workdir);
+    fprintf(fp, "exec sh -c \"exec wine %s %s\"\n\n", path, args);
+
+    fprintf(fp, "#EOF\n");
+
+    fclose(fp);
+    chmod(file, 0755);
+
+    return TRUE;
+}
+
+BOOL build_app_bundle(const char *unix_link, const char *dir, const char *link, const char *link_name, const char *path, const char *args, const char *workdir, const char *icon)
+{
+    BOOL ret = FALSE;
+    char *path_to_bundle, *path_to_macos, *path_to_script;
+
+    path_to_bundle = heap_printf("%s/%s.app", dir, link);
+    if (!path_to_bundle)
+        return FALSE;
+    path_to_macos = heap_printf("%s/Contents/MacOS", path_to_bundle);
+    path_to_script = heap_printf("%s/Contents/MacOS/%s", path_to_bundle, link_name);
+    if (!path_to_macos || !path_to_script)
+        goto out;
+
+    if (!create_directories(path_to_macos))
+        goto out;
+
+    if (!generate_bundle_script(path_to_script, path, args, workdir))
+        goto out;
+
+    if (unix_link)
+    {
+        DWORD r = register_menus_entry(path_to_bundle, unix_link);
+        if (r != ERROR_SUCCESS)
+            goto out;
+    }
+
+    ret = TRUE;
+
+out:
+    if (ret == FALSE)
+        remove_unix_link(path_to_bundle);
+    HeapFree(GetProcessHeap(), 0, path_to_bundle);
+    HeapFree(GetProcessHeap(), 0, path_to_macos);
+    HeapFree(GetProcessHeap(), 0, path_to_script);
+    return ret;
+}
 
 static int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, char *icon)
 {
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    return !build_app_bundle(unix_link, mac_desktop_dir, link_name, link_name, path, args, workdir, icon);
 }
 
 static int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
         const char *args, const char *descr, const char *workdir, char *icon)
 {
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    return !build_app_bundle(unix_link, wine_applications_dir, link, link_name, path, args, workdir, icon);
 }
 
 static void *appbundle_refresh_file_type_associations_init(void)
@@ -107,6 +182,28 @@ static void appbundle_refresh_file_type_associations_cleanup(void *user, BOOL ha
 
 static BOOL appbundle_init(void)
 {
+    WCHAR shellDesktopPath[MAX_PATH];
+
+    HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT, shellDesktopPath);
+    if (SUCCEEDED(hr))
+        mac_desktop_dir = wine_get_unix_file_name(shellDesktopPath);
+
+    if (mac_desktop_dir == NULL)
+    {
+        WINE_ERR("error looking up the desktop directory\n");
+        return FALSE;
+    }
+
+    if (getenv("WINE_APPLICATIONS_DIR"))
+        wine_applications_dir = strdupA(getenv("WINE_APPLICATIONS_DIR"));
+    else
+        wine_applications_dir = heap_printf("%s/Applications/Wine", getenv("HOME"));
+    if (!wine_applications_dir)
+        return FALSE;
+
+    create_directories(wine_applications_dir);
+    WINE_TRACE("Applications in %s\n", wine_applications_dir);
+
     return TRUE;
 }
 
