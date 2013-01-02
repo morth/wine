@@ -1,8 +1,10 @@
 MODULE    = winemenubuilder.exe
 APPMODE   = -mwindows -municode
 IMPORTS   = uuid windowscodecs shell32 shlwapi ole32 user32 advapi32
+EXTRALIBS = @COREFOUNDATIONLIB@ @APPLICATIONSERVICESLIB@
 
 C_SRCS = \
+	appbundle.c \
 	winemenubuilder.c \
 	xdg.c
 
