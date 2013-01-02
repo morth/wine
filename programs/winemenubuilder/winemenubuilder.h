@@ -38,6 +38,7 @@ typedef struct
 char *strdupA( const char *str );
 char* heap_printf(const char *format, ...);
 BOOL create_directories(char *directory);
+BOOL remove_unix_link(const char *unix_link);
 DWORD register_menus_entry(const char *unix_file, const char *windows_file);
 char* wchars_to_utf8_chars(LPCWSTR string);
 HRESULT read_ico_direntries(IStream *icoStream, ICONDIRENTRY **ppIconDirEntries, int *numEntries);

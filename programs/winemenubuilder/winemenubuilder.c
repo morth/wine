@@ -77,6 +77,8 @@
 #ifdef HAVE_FNMATCH_H
 #include <fnmatch.h>
 #endif
+#include <dirent.h>
+#include <limits.h>
 
 #define COBJMACROS
 #define NONAMELESSUNION
@@ -286,6 +288,58 @@ BOOL create_directories(char *directory)
        ret = FALSE;
 
     return ret;
+}
+
+BOOL remove_unix_link(const char *unix_link)
+{
+    struct stat st;
+
+    if (lstat(unix_link, &st))
+        return FALSE;
+
+    if (S_ISDIR(st.st_mode))
+    {
+        char path[PATH_MAX], *epath;
+        DIR *dir = opendir(unix_link);
+        struct dirent *ent;
+        int pathlen;
+
+        if (!dir)
+            return FALSE;
+
+        pathlen = snprintf(path, sizeof(path), "%s", unix_link);
+        if (pathlen < 0 || pathlen >= PATH_MAX - 2)
+            return FALSE;
+        path[pathlen++] = '/';
+        epath = path + pathlen;
+
+        while ((ent = readdir(dir)))
+        {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                continue;
+            if (pathlen + ent->d_namlen >= PATH_MAX)
+            {
+                closedir(dir);
+                return FALSE;
+            }
+            strcpy(epath, ent->d_name);
+            if (!remove_unix_link(path))
+            {
+                closedir(dir);
+                return FALSE;
+            }
+        }
+        closedir(dir);
+
+        if (rmdir(unix_link))
+            return FALSE;
+    }
+    else
+    {
+        if (unlink(unix_link))
+            return FALSE;
+    }
+    return TRUE;
 }
 
 char* wchars_to_utf8_chars(LPCWSTR string)
@@ -2660,7 +2714,7 @@ static void cleanup_menus(void)
                     if (stat(windows_file, &filestats) < 0 && errno == ENOENT)
                     {
                         WINE_TRACE("removing menu related file %s\n", unix_file);
-                        remove(unix_file);
+                        remove_unix_link(unix_file);
                         RegDeleteValueW(hkey, value);
                     }
                     else
