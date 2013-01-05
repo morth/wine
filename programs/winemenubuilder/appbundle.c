@@ -39,6 +39,8 @@
 
 #include <stdio.h>
 
+#include <CoreFoundation/CoreFoundation.h>
+
 #define COBJMACROS
 #define NONAMELESSUNION
 
@@ -98,23 +100,111 @@ static BOOL generate_bundle_script(const char *file, const char *path,
     return TRUE;
 }
 
+CFDictionaryRef create_info_plist_dictionary(const char *link_name)
+{
+    CFMutableDictionaryRef dict = NULL;
+    CFStringRef namestr;
+
+    namestr = CFStringCreateWithFileSystemRepresentation(NULL, link_name);
+    if (!namestr)
+        goto cleanup;
+
+    /* Create a dictionary that will hold the data. */
+    dict = CFDictionaryCreateMutable( kCFAllocatorDefault,
+            0,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks );
+    if (!dict)
+        goto cleanup;
+
+    /* Put the various items into the dictionary. */
+    /* FIXME - Some values assumed the ought not to be */
+    CFDictionarySetValue( dict, CFSTR("CFBundleDevelopmentRegion"), CFSTR("English") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleExecutable"), CFSTR("winelauncher") );
+    /* FIXME - Avoid identifier if not unique. */
+    /* CFDictionarySetValue( dict, CFSTR("CFBundleIdentifier"), CFSTR("org.winehq.wine") ); */
+    CFDictionarySetValue( dict, CFSTR("CFBundleInfoDictionaryVersion"), CFSTR("6.0") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleName"), namestr );
+    CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), namestr );
+    CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
+    CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
+
+cleanup:
+    if (namestr)
+        CFRelease(namestr);
+
+    return dict;
+}
+
+BOOL write_property_list( const char *path, CFPropertyListRef propertyList, CFPropertyListFormat format)
+{
+    CFDataRef data = NULL;
+    CFStringRef pathstr = NULL;
+    CFURLRef fileURL = NULL;
+    CFErrorRef err = NULL;
+    BOOL ret = FALSE;
+    SInt32 errorCode;
+
+    pathstr = CFStringCreateWithFileSystemRepresentation(NULL, path);
+    if (!pathstr)
+        goto cleanup;
+
+    fileURL = CFURLCreateWithFileSystemPath( kCFAllocatorDefault,
+            pathstr,
+            kCFURLPOSIXPathStyle,
+            false );
+    if (!fileURL)
+        goto cleanup;
+
+    data = CFPropertyListCreateData(NULL, propertyList, format, 0, &err);
+    if (!data)
+        goto cleanup;
+
+    ret = CFURLWriteDataAndPropertiesToResource (
+            fileURL,
+            data,
+            NULL,
+            &errorCode);
+
+cleanup:
+    if (pathstr)
+        CFRelease(pathstr);
+    if (fileURL)
+        CFRelease(fileURL);
+    if (data)
+        CFRelease(data);
+    if (err)
+        CFRelease(err);
+
+    return ret;
+}
+
 BOOL build_app_bundle(const char *unix_link, const char *dir, const char *link, const char *link_name, const char *path, const char *args, const char *workdir, const char *icon)
 {
     BOOL ret = FALSE;
-    char *path_to_bundle, *path_to_macos, *path_to_script;
+    char *path_to_bundle, *path_to_macos, *path_to_script, *path_to_info;
+    CFDictionaryRef info = NULL;
 
     path_to_bundle = heap_printf("%s/%s.app", dir, link);
     if (!path_to_bundle)
         return FALSE;
     path_to_macos = heap_printf("%s/Contents/MacOS", path_to_bundle);
-    path_to_script = heap_printf("%s/Contents/MacOS/%s", path_to_bundle, link_name);
-    if (!path_to_macos || !path_to_script)
+    path_to_script = heap_printf("%s/Contents/MacOS/winelauncher", path_to_bundle);
+    path_to_info = heap_printf("%s/Contents/Info.plist", path_to_bundle);
+    if (!path_to_macos || !path_to_script || !path_to_info)
         goto out;
 
     if (!create_directories(path_to_macos))
         goto out;
 
     if (!generate_bundle_script(path_to_script, path, args, workdir))
+        goto out;
+
+    info = create_info_plist_dictionary(link_name);
+    if (!info)
+        goto out;
+
+    if (!write_property_list(path_to_info, info, kCFPropertyListXMLFormat_v1_0))
         goto out;
 
     if (unix_link)
@@ -132,6 +222,9 @@ out:
     HeapFree(GetProcessHeap(), 0, path_to_bundle);
     HeapFree(GetProcessHeap(), 0, path_to_macos);
     HeapFree(GetProcessHeap(), 0, path_to_script);
+    HeapFree(GetProcessHeap(), 0, path_to_info);
+    if (info)
+        CFRelease(info);
     return ret;
 }
 
