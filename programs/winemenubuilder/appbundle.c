@@ -64,8 +64,135 @@ WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 static char *mac_desktop_dir = NULL;
 static char *wine_applications_dir = NULL;
 
-extern HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier);
+#define ICNS_SLOTS 6
+
+static inline int size_to_slot(int size)
+{
+    switch (size)
+    {
+        case 16: return 0;
+        case 32: return 1;
+        case 48: return 2;
+        case 64: return -2;  /* Classic Mode */
+        case 128: return 3;
+        case 256: return 4;
+        case 512: return 5;
+    }
+
+    return -1;
+}
+
+#define CLASSIC_SLOT 3
+
+HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
+                                   const char *destFilename, char **nativeIdentifier)
+{
+    ICONDIRENTRY *iconDirEntries = NULL;
+    int numEntries;
+    struct {
+        int index;
+        int maxBits;
+        BOOL scaled;
+    } best[ICNS_SLOTS];
+    int indexes[ICNS_SLOTS];
+    int i;
+    char *icnsPath = NULL;
+    LARGE_INTEGER zero;
+    HRESULT hr;
+
+    hr = read_ico_direntries(icoStream, &iconDirEntries, &numEntries);
+    if (FAILED(hr))
+        goto end;
+    for (i = 0; i < ICNS_SLOTS; i++)
+    {
+        best[i].index = -1;
+        best[i].maxBits = 0;
+    }
+    for (i = 0; i < numEntries; i++)
+    {
+        int slot;
+        int width = iconDirEntries[i].bWidth ? iconDirEntries[i].bWidth : 256;
+        int height = iconDirEntries[i].bHeight ? iconDirEntries[i].bHeight : 256;
+        BOOL scaled = FALSE;
+
+        WINE_TRACE("[%d]: %d x %d @ %d\n", i, width, height, iconDirEntries[i].wBitCount);
+        if (height != width)
+            continue;
+        slot = size_to_slot(width);
+        if (slot == -2)
+        {
+            scaled = TRUE;
+            slot = CLASSIC_SLOT;
+        }
+        else if (slot < 0)
+            continue;
+        if (scaled && best[slot].maxBits && !best[slot].scaled)
+            continue; /* don't replace unscaled with scaled */
+        if (iconDirEntries[i].wBitCount >= best[slot].maxBits || (!scaled && best[slot].scaled))
+        {
+            best[slot].index = i;
+            best[slot].maxBits = iconDirEntries[i].wBitCount;
+            best[slot].scaled = scaled;
+        }
+    }
+    /* remove the scaled icon if a larger unscaled icon exists */
+    if (best[CLASSIC_SLOT].scaled)
+    {
+        for (i = CLASSIC_SLOT+1; i < ICNS_SLOTS; i++)
+            if (best[i].index >= 0 && !best[i].scaled)
+            {
+                best[CLASSIC_SLOT].index = -1;
+                break;
+            }
+    }
+
+    numEntries = 0;
+    for (i = 0; i < ICNS_SLOTS; i++)
+    {
+        if (best[i].index >= 0)
+        {
+            indexes[numEntries] = best[i].index;
+            numEntries++;
+        }
+    }
+
+    if (destFilename)
+        *nativeIdentifier = heap_printf("%s", destFilename);
+    else
+        *nativeIdentifier = compute_native_identifier(exeIndex, icoPathW);
+    if (*nativeIdentifier == NULL)
+    {
+        hr = E_OUTOFMEMORY;
+        goto end;
+    }
+    icnsPath = heap_printf("/tmp/%s.icns", *nativeIdentifier);
+    if (icnsPath == NULL)
+    {
+        hr = E_OUTOFMEMORY;
+        WINE_WARN("out of memory creating ICNS path\n");
+        goto end;
+    }
+    zero.QuadPart = 0;
+    hr = IStream_Seek(icoStream, zero, STREAM_SEEK_SET, NULL);
+    if (FAILED(hr))
+    {
+        WINE_WARN("seeking icon stream failed, error 0x%08X\n", hr);
+        goto end;
+    }
+    hr = convert_to_native_icon(icoStream, indexes, numEntries, &CLSID_WICIcnsEncoder,
+                                icnsPath, icoPathW);
+    if (FAILED(hr))
+    {
+        WINE_WARN("converting %s to %s failed, error 0x%08X\n",
+            wine_dbgstr_w(icoPathW), wine_dbgstr_a(icnsPath), hr);
+        goto end;
+    }
+
+end:
+    HeapFree(GetProcessHeap(), 0, iconDirEntries);
+    HeapFree(GetProcessHeap(), 0, icnsPath);
+    return hr;
+}
 
 /* inspired by write_desktop_entry() in xdg support code */
 static BOOL generate_bundle_script(const char *file, const char *path,

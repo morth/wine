@@ -35,6 +35,8 @@ typedef struct
     WORD idCount;
 } ICONDIR;
 
+DEFINE_GUID(CLSID_WICIcnsEncoder, 0x312fb6f1,0xb767,0x409d,0x8a,0x6d,0x0f,0xc1,0x54,0xd4,0xf0,0x5c);
+
 char *strdupA( const char *str );
 char* heap_printf(const char *format, ...);
 BOOL create_directories(char *directory);
