@@ -106,10 +106,6 @@ static void write_xml_text(FILE *file, const char *text)
     }
 }
 
-#ifdef __APPLE__
-extern HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier);
-#else
 static void refresh_icon_cache(const char *iconsDir)
 {
     /* The icon theme spec only requires the mtime on the "toplevel"
@@ -227,7 +223,6 @@ end:
     HeapFree(GetProcessHeap(), 0, iconsDir);
     return hr;
 }
-#endif /* defined(__APPLE__) */
 
 static BOOL write_desktop_entry(const char *unix_link, const char *location, const char *linkname,
                                 const char *path, const char *args, const char *descr,
@@ -927,11 +922,7 @@ const struct winemenubuilder_dispatch xdg_dispatch =
     xdg_build_desktop_link,
     xdg_build_menu_link,
 
-#ifdef __APPLE__
-    osx_write_icon,
-#else
     xdg_write_icon,
-#endif
 
     xdg_refresh_file_type_associations_init,
     freedesktop_mime_type_for_extension,
