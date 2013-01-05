@@ -6890,7 +6890,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__Bsymbolic__z_defs+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-Bsymbolic,-z,defs"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-Bsymbolic,-z,defs"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -6915,7 +6915,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__Bsymbolic__init___wine_spec_init__fini___wi
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-Bsymbolic,-init,__wine_spec_init,-fini,__wine_spec_fini"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-Bsymbolic,-init,__wine_spec_init,-fini,__wine_spec_fini"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -6940,7 +6940,7 @@ if ${ac_cv_cflags__fPIC__Wl___export_dynamic+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,--export-dynamic"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,--export-dynamic"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -6967,7 +6967,7 @@ if eval \${$as_ac_var+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,--rpath,\$ORIGIN/../lib"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,--rpath,\$ORIGIN/../lib"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -6995,7 +6995,7 @@ if eval \${$as_ac_var+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,-R,\$ORIGIN/../lib"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,-R,\$ORIGIN/../lib"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7024,7 +7024,7 @@ if ${ac_cv_cflags__Wl___enable_new_dtags+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wl,--enable-new-dtags"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wl,--enable-new-dtags"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7052,7 +7052,7 @@ if ${ac_cv_cflags__Wl___section_start__interp_0x7bf00400+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wl,--section-start,.interp=0x7bf00400"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wl,--section-start,.interp=0x7bf00400"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7127,7 +7127,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__soname_confest_so_1+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-soname,confest.so.1"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-soname,confest.so.1"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7152,7 +7152,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__h_confest_so_1+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-h,confest.so.1"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-h,confest.so.1"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7179,7 +7179,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__Bsymbolic__z_defs+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-Bsymbolic,-z,defs"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-Bsymbolic,-z,defs"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7205,7 +7205,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl__Bsymbolic__init___wine_spec_init__fini___wi
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,-Bsymbolic,-init,__wine_spec_init,-fini,__wine_spec_fini"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,-Bsymbolic,-init,__wine_spec_init,-fini,__wine_spec_fini"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7232,7 +7232,7 @@ if ${ac_cv_cflags__fPIC__shared__Wl___version_script_conftest_map+:} false; then
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -shared -Wl,--version-script=conftest.map"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -shared -Wl,--version-script=conftest.map"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7259,7 +7259,7 @@ if ${ac_cv_cflags__fPIC__Wl___export_dynamic+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,--export-dynamic"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,--export-dynamic"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7287,7 +7287,7 @@ if eval \${$as_ac_var+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,--rpath,\$ORIGIN/../lib"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,--rpath,\$ORIGIN/../lib"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7315,7 +7315,7 @@ if eval \${$as_ac_var+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fPIC -Wl,-R,\$ORIGIN/../lib"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fPIC -Wl,-R,\$ORIGIN/../lib"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7344,7 +7344,7 @@ if ${ac_cv_cflags__Wl___enable_new_dtags+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wl,--enable-new-dtags"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wl,--enable-new-dtags"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -7372,7 +7372,7 @@ if ${ac_cv_cflags__Wl___section_start__interp_0x7bf00400+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wl,--section-start,.interp=0x7bf00400"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wl,--section-start,.interp=0x7bf00400"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12306,13 +12306,38 @@ $as_echo "$ac_cv_c_gcc_strength_bug" >&6; }
     EXTRACFLAGS="$EXTRACFLAGS -fno-strength-reduce"
   fi
 
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -fno-builtin" >&5
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -Werror" >&5
+$as_echo_n "checking whether the compiler supports -Werror... " >&6; }
+if ${ac_cv_cflags__Werror+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_wine_try_cflags_saved=$CFLAGS
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Werror"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int main(int argc, char **argv) { return 0; }
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_cflags__Werror=yes
+else
+  ac_cv_cflags__Werror=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+CFLAGS=$ac_wine_try_cflags_saved
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags__Werror" >&5
+$as_echo "$ac_cv_cflags__Werror" >&6; }
+if test $ac_cv_cflags__Werror = yes; then :
+  ac_wine_try_cflags_werror=-Werror
+fi
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -fno-builtin" >&5
 $as_echo_n "checking whether the compiler supports -fno-builtin... " >&6; }
 if ${ac_cv_cflags__fno_builtin+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fno-builtin"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fno-builtin"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12338,7 +12363,7 @@ if ${ac_cv_cflags__fno_strict_aliasing+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fno-strict-aliasing"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fno-strict-aliasing"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12364,7 +12389,7 @@ if ${ac_cv_cflags__Werror_unknown_warning_option+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Werror=unknown-warning-option"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Werror=unknown-warning-option"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12389,7 +12414,7 @@ if ${ac_cv_cflags__Wdeclaration_after_statement+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wdeclaration-after-statement"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wdeclaration-after-statement"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12414,7 +12439,7 @@ if ${ac_cv_cflags__Wempty_body+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wempty-body"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wempty-body"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12439,7 +12464,7 @@ if ${ac_cv_cflags__Wignored_qualifiers+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wignored-qualifiers"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wignored-qualifiers"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12464,7 +12489,7 @@ if ${ac_cv_cflags__Wstrict_prototypes+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wstrict-prototypes"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wstrict-prototypes"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12489,7 +12514,7 @@ if ${ac_cv_cflags__Wtype_limits+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wtype-limits"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wtype-limits"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12514,7 +12539,7 @@ if ${ac_cv_cflags__Wunused_but_set_parameter+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wunused-but-set-parameter"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wunused-but-set-parameter"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12539,7 +12564,7 @@ if ${ac_cv_cflags__Wwrite_strings+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wwrite-strings"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wwrite-strings"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12565,7 +12590,7 @@ if ${ac_cv_cflags__Wpointer_arith+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wpointer-arith"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wpointer-arith"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12619,7 +12644,7 @@ if ${ac_cv_cflags__Wlogical_op+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wlogical-op"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wlogical-op"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12679,7 +12704,7 @@ if ${ac_cv_cflags__gstabsp+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -gstabs+"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -gstabs+"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12704,7 +12729,7 @@ if ${ac_cv_cflags__gdwarf_2+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -gdwarf-2"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -gdwarf-2"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12729,7 +12754,7 @@ if ${ac_cv_cflags__gstrict_dwarf+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -gstrict-dwarf"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -gstrict-dwarf"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12759,7 +12784,7 @@ if ${ac_cv_cflags__fno_omit_frame_pointer+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -fno-omit-frame-pointer"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -fno-omit-frame-pointer"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12787,7 +12812,7 @@ if ${ac_cv_cflags__Wno_format+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wno-format"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Wno-format"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
@@ -12816,7 +12841,7 @@ if ${ac_cv_cflags__Werror+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Werror"
+CFLAGS="$CFLAGS $ac_wine_try_cflags_werror -Werror"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int main(int argc, char **argv) { return 0; }
