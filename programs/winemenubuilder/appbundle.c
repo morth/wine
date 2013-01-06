@@ -155,7 +155,7 @@ HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW, const
         }
     }
 
-    icnsPath = heap_printf("/tmp/%s.icns", destFilename);
+    icnsPath = heap_printf("%s.icns", destFilename);
     if (icnsPath == NULL)
     {
         hr = E_OUTOFMEMORY;
@@ -217,7 +217,7 @@ static BOOL generate_bundle_script(const char *file, const char *path,
     return TRUE;
 }
 
-CFDictionaryRef create_info_plist_dictionary(const char *link_name)
+CFDictionaryRef create_info_plist_dictionary(const char *link_name, const char *icon)
 {
     CFMutableDictionaryRef dict = NULL;
     CFStringRef namestr;
@@ -245,6 +245,17 @@ CFDictionaryRef create_info_plist_dictionary(const char *link_name)
     CFDictionarySetValue( dict, CFSTR("CFBundleDisplayName"), namestr );
     CFDictionarySetValue( dict, CFSTR("CFBundlePackageType"), CFSTR("APPL") );
     CFDictionarySetValue( dict, CFSTR("CFBundleVersion"), CFSTR("1.0") );
+
+    if (icon)
+    {
+        CFStringRef iconstr = CFStringCreateWithFileSystemRepresentation(NULL, icon);
+
+        if (iconstr)
+        {
+            CFDictionarySetValue( dict, CFSTR("CFBundleIconFile"), iconstr );
+            CFRelease(iconstr);
+        }
+    }
 
 cleanup:
     if (namestr)
@@ -296,10 +307,10 @@ cleanup:
     return ret;
 }
 
-BOOL build_app_bundle(const char *unix_link, const char *dir, const char *link, const char *link_name, const char *path, const char *args, const char *workdir, const char *icon)
+BOOL build_app_bundle(const char *unix_link, const char *dir, const char *link, const char *link_name, const char *path, const char *args, const char *workdir, char **icon)
 {
     BOOL ret = FALSE;
-    char *path_to_bundle, *path_to_macos, *path_to_script, *path_to_info;
+    char *path_to_bundle, *path_to_macos, *path_to_script, *path_to_info, *path_to_resources;
     CFDictionaryRef info = NULL;
 
     path_to_bundle = heap_printf("%s/%s.app", dir, link);
@@ -308,21 +319,32 @@ BOOL build_app_bundle(const char *unix_link, const char *dir, const char *link, 
     path_to_macos = heap_printf("%s/Contents/MacOS", path_to_bundle);
     path_to_script = heap_printf("%s/Contents/MacOS/winelauncher", path_to_bundle);
     path_to_info = heap_printf("%s/Contents/Info.plist", path_to_bundle);
-    if (!path_to_macos || !path_to_script || !path_to_info)
+    path_to_resources = heap_printf("%s/Contents/Resources", path_to_bundle);
+    if (!path_to_macos || !path_to_script || !path_to_info || !path_to_resources)
         goto out;
 
-    if (!create_directories(path_to_macos))
+    if (!create_directories(path_to_macos) || !create_directories(path_to_resources))
         goto out;
 
     if (!generate_bundle_script(path_to_script, path, args, workdir))
         goto out;
 
-    info = create_info_plist_dictionary(link_name);
+    info = create_info_plist_dictionary(link_name, *icon);
     if (!info)
         goto out;
 
     if (!write_property_list(path_to_info, info, kCFPropertyListXMLFormat_v1_0))
         goto out;
+
+    if (*icon)
+    {
+        char *tmp = heap_printf("%s/%s", path_to_resources, *icon);
+
+        if (!tmp)
+            goto out;
+        HeapFree(GetProcessHeap(), 0, *icon);
+        *icon = tmp;
+    }
 
     if (unix_link)
     {
@@ -340,19 +362,20 @@ out:
     HeapFree(GetProcessHeap(), 0, path_to_macos);
     HeapFree(GetProcessHeap(), 0, path_to_script);
     HeapFree(GetProcessHeap(), 0, path_to_info);
+    HeapFree(GetProcessHeap(), 0, path_to_resources);
     if (info)
         CFRelease(info);
     return ret;
 }
 
 static int appbundle_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-        const char *args, const char *descr, const char *workdir, char *icon)
+        const char *args, const char *descr, const char *workdir, char **icon)
 {
     return !build_app_bundle(unix_link, mac_desktop_dir, link_name, link_name, path, args, workdir, icon);
 }
 
 static int appbundle_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-        const char *args, const char *descr, const char *workdir, char *icon)
+        const char *args, const char *descr, const char *workdir, char **icon)
 {
     return !build_app_bundle(unix_link, wine_applications_dir, link, link_name, path, args, workdir, icon);
 }
@@ -376,7 +399,7 @@ static BOOL appbundle_write_mime_type_entry(void *user, const char *extensionA, 
 
 static BOOL appbundle_write_association_entry(void *user, const char *extensionA, const char *friendlyAppNameA,
         const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
-        const char *appIconA)
+        char **appIconA, char **docIconA)
 {
     return FALSE;
 }

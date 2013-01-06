@@ -725,7 +725,7 @@ static BOOL write_freedesktop_association_entry(void *user, const char *dot_exte
                                                 const char *friendlyAppName,
                                                 const char *friendlyDocNameA,
                                                 const char *mimeType, const char *progId,
-                                                const char *openWithIcon)
+                                                char **openWithIcon, char **documentIcon)
 {
     struct xdg_file_type_user_data *ud = user;
     BOOL ret = FALSE;
@@ -739,7 +739,7 @@ static BOOL write_freedesktop_association_entry(void *user, const char *dot_exte
 
     WINE_TRACE("writing association for file type %s, friendlyAppName=%s, MIME type %s, progID=%s, icon=%s to file %s\n",
                wine_dbgstr_a(dot_extension), wine_dbgstr_a(friendlyAppName), wine_dbgstr_a(mimeType),
-               wine_dbgstr_a(progId), wine_dbgstr_a(openWithIcon), wine_dbgstr_a(desktopPath));
+               wine_dbgstr_a(progId), wine_dbgstr_a(*openWithIcon), wine_dbgstr_a(desktopPath));
 
     desktop = fopen(desktopPath, "w");
     if (desktop)
@@ -752,7 +752,7 @@ static BOOL write_freedesktop_association_entry(void *user, const char *dot_exte
         fprintf(desktop, "NoDisplay=true\n");
         fprintf(desktop, "StartupNotify=true\n");
         if (openWithIcon)
-            fprintf(desktop, "Icon=%s\n", openWithIcon);
+            fprintf(desktop, "Icon=%s\n", *openWithIcon);
         ret = TRUE;
         fclose(desktop);
     }
@@ -803,7 +803,7 @@ static BOOL init_xdg(void)
 }
 
 static int xdg_build_desktop_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-                                const char *args, const char *descr, const char *workdir, char *icon)
+                                const char *args, const char *descr, const char *workdir, char **icon)
 {
     char *location;
     int r = -1;
@@ -812,7 +812,7 @@ static int xdg_build_desktop_link(const char *unix_link, const char *link, const
     if (location)
     {
         r = !write_desktop_entry(unix_link, location, link_name,
-                path, args, descr, workdir, icon);
+                path, args, descr, workdir, *icon);
         if (r == 0)
             chmod(location, 0755);
     }
@@ -820,9 +820,9 @@ static int xdg_build_desktop_link(const char *unix_link, const char *link, const
 }
 
 static int xdg_build_menu_link(const char *unix_link, const char *link, const char *link_name, const char *path,
-                             const char *args, const char *descr, const char *workdir, char *icon)
+                             const char *args, const char *descr, const char *workdir, char **icon)
 {
-    return !write_menu_entry(unix_link, link, path, args, descr, workdir, icon);
+    return !write_menu_entry(unix_link, link, path, args, descr, workdir, *icon);
 }
 
 static void *xdg_refresh_file_type_associations_init(void)

@@ -53,9 +53,9 @@ struct winemenubuilder_dispatch
     BOOL (*init)(void);
 
     int (*build_desktop_link)(const char *unix_link, const char *link, const char *link_name, const char *path,
-            const char *args, const char *descr, const char *workdir, char *icon);
+            const char *args, const char *descr, const char *workdir, char **icon);
     int (*build_menu_link)(const char *unix_link, const char *link, const char *link_name, const char *path,
-            const char *args, const char *descr, const char *workdir, char *icon);
+            const char *args, const char *descr, const char *workdir, char **icon);
 
     HRESULT (*write_icon)(IStream *icoStream, int exeIndex, LPCWSTR icoPathW, const char *destFilename);
 
@@ -65,7 +65,7 @@ struct winemenubuilder_dispatch
     BOOL (*write_mime_type_entry)(void *user, const char *extensionA, const char *mimeTypeA, const char *friendlyDocNameA);
     BOOL (*write_association_entry)(void *user, const char *extensionA, const char *friendlyAppNameA,
             const char *friendlyDocNameA, const char *mimeTypeA, const char *progIdA,
-            const char *appIconA);
+            char **appIconA, char **iconA);
     BOOL (*remove_file_type_association)(void *user, const char *extensionA, LPCWSTR extensionW);
     void (*refresh_file_type_associations_cleanup)(void *user, BOOL hasChanged);
 };

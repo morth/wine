@@ -1835,21 +1835,7 @@ static BOOL generate_associations(void *user)
                      * and the default name is more intuitive anyway.
                      */
                     if (iconW)
-                    {
                         iconA = slashes_to_minuses(mimeTypeA);
-                        if (iconA)
-                        {
-                            int index = 0;
-                            WCHAR *comma = strrchrW(iconW, ',');
-                            if (comma)
-                            {
-                                *comma = 0;
-                                index = atoiW(comma + 1);
-                            }
-                            extract_icon(iconW, index, iconA, FALSE);
-                        }
-                    }
-
                     wmb_dispatch->write_mime_type_entry(user, extensionA, mimeTypeA, friendlyDocNameA);
                     hasChanged = TRUE;
                 }
@@ -1867,11 +1853,7 @@ static BOOL generate_associations(void *user)
 
             executableW = assoc_query(ASSOCSTR_EXECUTABLE, extensionW, openW);
             if (executableW)
-            {
                 openWithIconA = compute_native_identifier(0, executableW);
-                if (openWithIconA)
-                    extract_icon(executableW, 0, openWithIconA, FALSE);
-            }
 
             friendlyAppNameW = assoc_query(ASSOCSTR_FRIENDLYAPPNAME, extensionW, openW);
             if (friendlyAppNameW)
@@ -1932,10 +1914,24 @@ static BOOL generate_associations(void *user)
 
             if (has_association_changed(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA))
             {
-                if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, openWithIconA))
+                if (wmb_dispatch->write_association_entry(user, extensionA, friendlyAppNameA, friendlyDocNameA, mimeTypeA, progIdA, &openWithIconA, &iconA))
                 {
                     hasChanged = TRUE;
                     update_association(extensionW, mimeTypeA, progIdW, friendlyAppNameA, openWithIconA);
+                }
+
+                if (openWithIconA)
+                    extract_icon(executableW, 0, openWithIconA, FALSE);
+                if (iconA)
+                {
+                    int index = 0;
+                    WCHAR *comma = strrchrW(iconW, ',');
+                    if (comma)
+                    {
+                        *comma = 0;
+                        index = atoiW(comma + 1);
+                    }
+                    extract_icon(iconW, index, iconA, FALSE);
                 }
             }
 
@@ -2053,23 +2049,8 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             WINE_TRACE("pidl path  : %s\n", wine_dbgstr_w(szPath));
     }
 
-    /* extract the icon */
+    /* get icon name */
     icon_name = compute_native_identifier(iIconId, szIconPath ? szIconPath : szPath);
-    if (icon_name)
-        r = extract_icon(szIconPath ? szIconPath : szPath, iIconId, icon_name, bWait);
-    else
-        r = E_OUTOFMEMORY;
-    /* fail - try once again after parent process exit */
-    if( FAILED(r) )
-    {
-        if (bWait)
-        {
-            WINE_WARN("Unable to extract icon, deferring.\n");
-            goto cleanup;
-        }
-        WINE_ERR("failed to extract icon from %s\n",
-                 wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
-    }
 
     unix_link = wine_get_unix_file_name(link);
     if (unix_link == NULL)
@@ -2159,13 +2140,13 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
             if (link_arg)
             {
                 r = wmb_dispatch->build_desktop_link(unix_link, link_name, lastEntry,
-                        start_path, link_arg, description, work_dir, icon_name);
+                        start_path, link_arg, description, work_dir, &icon_name);
                 HeapFree(GetProcessHeap(), 0, link_arg);
             }
         }
         else
         {
-            r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, icon_name);
+            r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, escaped_path, escaped_args, description, work_dir, &icon_name);
         }
     }
     else
@@ -2173,9 +2154,28 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
         char *link_arg = escape_unix_link_arg(unix_link);
         if (link_arg)
         {
-            r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, icon_name);
+            r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, link_arg, description, work_dir, &icon_name);
             HeapFree(GetProcessHeap(), 0, link_arg);
         }
+    }
+
+    /* extract the icon */
+    if( szIconPath[0] )
+        r = extract_icon( szIconPath , iIconId, icon_name, bWait );
+    else
+        r = extract_icon( szPath, iIconId, icon_name, bWait );
+
+    /* fail - try once again after parent process exit */
+    if( FAILED(r) )
+    {
+        if (bWait)
+        {
+            WINE_WARN("Unable to extract icon, deferring.\n");
+            goto cleanup;
+        }
+        WINE_ERR("failed to extract icon from %s\n",
+                 wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
+        r = 0; /* Not fatal */
     }
 
     ReleaseSemaphore( hsem, 1, NULL );
@@ -2292,23 +2292,6 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
         IPropertySetStorage_Release(pPropSetStg);
     }
 
-    if( icon_name )
-    {
-        r = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, icon_name, bWait );
-	/* fail - try once again after parent process exit */
-        if (FAILED(r))
-        {
-            if (bWait)
-            {
-                WINE_WARN("Unable to extract icon, deferring.\n");
-                ret = FALSE;
-                goto cleanup;
-            }
-            WINE_ERR("failed to extract icon from %s\n",
-                     wine_dbgstr_w( pv[0].u.pwszVal ));
-        }
-    }
-
     hSem = CreateSemaphoreA( NULL, 1, 1, "winemenubuilder_semaphore");
     if( WAIT_OBJECT_0 != MsgWaitForMultipleObjects( 1, &hSem, FALSE, INFINITE, QS_ALLINPUT ) )
     {
@@ -2321,11 +2304,28 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
     else
         ++lastEntry;
     if (in_desktop_dir(csidl))
-        r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_desktop_link(NULL, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, &icon_name);
     else
-        r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, icon_name);
+        r = wmb_dispatch->build_menu_link(unix_link, link_name, lastEntry, start_path, escaped_urlPath, NULL, NULL, &icon_name);
     ret = (r == 0);
     ReleaseSemaphore(hSem, 1, NULL);
+
+    if (ret && icon_name)
+    {
+        r = extract_icon( pv[0].u.pwszVal, pv[1].u.iVal, icon_name, bWait );
+        /* fail - try once again after parent process exit */
+        if( FAILED(r) )
+        {
+            if (bWait)
+            {
+                WINE_WARN("Unable to extract icon, deferring.\n");
+                ret = FALSE;
+                goto cleanup;
+            }
+            WINE_ERR("failed to extract icon from %s\n",
+                     wine_dbgstr_w( pv[0].u.pwszVal ));
+        }
+    }
 
 cleanup:
     if (hSem)
