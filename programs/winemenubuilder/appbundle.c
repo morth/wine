@@ -84,8 +84,7 @@ static inline int size_to_slot(int size)
 
 #define CLASSIC_SLOT 3
 
-HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier)
+HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW, const char *destFilename)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -156,16 +155,7 @@ HRESULT osx_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
         }
     }
 
-    if (destFilename)
-        *nativeIdentifier = heap_printf("%s", destFilename);
-    else
-        *nativeIdentifier = compute_native_identifier(exeIndex, icoPathW);
-    if (*nativeIdentifier == NULL)
-    {
-        hr = E_OUTOFMEMORY;
-        goto end;
-    }
-    icnsPath = heap_printf("/tmp/%s.icns", *nativeIdentifier);
+    icnsPath = heap_printf("/tmp/%s.icns", destFilename);
     if (icnsPath == NULL)
     {
         hr = E_OUTOFMEMORY;
