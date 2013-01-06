@@ -57,8 +57,7 @@ struct winemenubuilder_dispatch
     int (*build_menu_link)(const char *unix_link, const char *link, const char *link_name, const char *path,
             const char *args, const char *descr, const char *workdir, char *icon);
 
-    HRESULT (*write_icon)(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-            const char *destFilename, char **nativeIdentifier);
+    HRESULT (*write_icon)(IStream *icoStream, int exeIndex, LPCWSTR icoPathW, const char *destFilename);
 
 
     void *(*refresh_file_type_associations_init)(void);

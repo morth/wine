@@ -126,8 +126,7 @@ static void refresh_icon_cache(const char *iconsDir)
     }
 }
 
-static HRESULT xdg_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW,
-                                   const char *destFilename, char **nativeIdentifier)
+static HRESULT xdg_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW, const char *destFilename)
 {
     ICONDIRENTRY *iconDirEntries = NULL;
     int numEntries;
@@ -140,15 +139,6 @@ static HRESULT xdg_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW
     if (FAILED(hr))
         goto end;
 
-    if (destFilename)
-        *nativeIdentifier = heap_printf("%s", destFilename);
-    else
-        *nativeIdentifier = compute_native_identifier(exeIndex, icoPathW);
-    if (*nativeIdentifier == NULL)
-    {
-        hr = E_OUTOFMEMORY;
-        goto end;
-    }
     iconsDir = heap_printf("%s/icons/hicolor", xdg_data_dir);
     if (iconsDir == NULL)
     {
@@ -199,7 +189,7 @@ static HRESULT xdg_write_icon(IStream *icoStream, int exeIndex, LPCWSTR icoPathW
             goto endloop;
         }
         create_directories(iconDir);
-        pngPath = heap_printf("%s/%s.png", iconDir, *nativeIdentifier);
+        pngPath = heap_printf("%s/%s.png", iconDir, destFilename);
         if (pngPath == NULL)
         {
             hr = E_OUTOFMEMORY;
