@@ -333,13 +333,13 @@ static size_t format_string( WCHAR *buffer, size_t len, const char *format, cons
     {
         for (i = 0; i < width - max; i++)
         {
-            if (count++ < len)
+            if (++count < len)
                 *buffer++ = ' ';
         }
     }
 
     if (count < len)
-        memcpy( buffer, str, min( max, len - count ) * sizeof(WCHAR) );
+        memcpy( buffer, str, min( max, len - count - 1 ) * sizeof(WCHAR) );
     count += max;
     buffer += max;
 
@@ -347,7 +347,7 @@ static size_t format_string( WCHAR *buffer, size_t len, const char *format, cons
     {
         for (i = 0; i < width - max; i++)
         {
-            if (count++ < len)
+            if (++count < len)
                 *buffer++ = ' ';
         }
     }
@@ -364,7 +364,7 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
     {
         while (*iter && *iter != '%')
         {
-            if (written++ < len)
+            if (++written < len)
                 *str++ = *iter;
             iter++;
         }
@@ -372,7 +372,7 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
         {
             if (iter[1] == '%')
             {
-                if (written++ < len)
+                if (++written < len)
                     *str++ = '%'; /* "%%"->'%' */
                 iter += 2;
                 continue;
@@ -434,7 +434,7 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
                 *fmta++ = 's';
                 *fmta = 0;
                 count = format_string( str, remaining, fmtbufa, wstr ? wstr : none, -1 );
-                str += min( count, remaining );
+                str += min( count, remaining - 1 );
                 written += count;
                 iter++;
                 break;
@@ -450,7 +450,7 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
                 *fmta++ = 's';
                 *fmta = 0;
                 count = format_string( str, remaining, fmtbufa, &wstr, 1 );
-                str += min( count, remaining );
+                str += min( count, remaining - 1 );
                 written += count;
                 iter++;
                 break;
@@ -481,7 +481,7 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
                 }
                 while (*bufaiter)
                 {
-                    if (written++ < len)
+                    if (++written < len)
                         *str++ = *bufaiter;
                     bufaiter++;
                 }
@@ -491,15 +491,8 @@ int vsnprintfW(WCHAR *str, size_t len, const WCHAR *format, va_list valist)
             }
         }
     }
-    if (len)
-    {
-        if (written >= len)
-            str--;
-        *str++ = 0;
-    }
-
-    /* FIXME: POSIX [v]snprintf() returns the equivalent of written, not -1, on short buffer. */
-    return written < len ? (int)written : -1;
+    *str = 0;
+    return (int)written;
 }
 
 int vsprintfW( WCHAR *str, const WCHAR *format, va_list valist )
