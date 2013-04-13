@@ -956,14 +956,22 @@ static SIZE_T get_committed_size( struct file_view *view, void *base, BYTE *vpro
  */
 static NTSTATUS decommit_pages( struct file_view *view, size_t start, size_t size )
 {
-    if (wine_anon_mmap( (char *)view->base + start, size, PROT_NONE, MAP_FIXED ) != (void *)-1)
+    BYTE *p;
+
+#ifndef DECOMMIT_SPEED_HACK
+    if (mprotect( (char *)view->base + start, size, PROT_WRITE ) == 0)
     {
-        BYTE *p = view->prot + (start >> page_shift);
-        size >>= page_shift;
-        while (size--) *p++ &= ~VPROT_COMMITTED;
-        return STATUS_SUCCESS;
+        memset( (char *)view->base + start, 0, size);
+        mprotect( (char *)view->base + start, size, PROT_NONE);
     }
-    return FILE_GetNtStatus();
+    else if (wine_anon_mmap( (char *)view->base + start, size, PROT_NONE, MAP_FIXED ) == (void *)-1)
+        return FILE_GetNtStatus();
+#endif
+
+    p = view->prot + (start >> page_shift);
+    size >>= page_shift;
+    while (size--) *p++ &= ~VPROT_COMMITTED;
+    return STATUS_SUCCESS;
 }
 
 
